@@ -23,6 +23,7 @@ const Student = require('./Student')(sequelize);
 const Teacher = require('./Teacher')(sequelize);
 const Course = require('./Course')(sequelize);
 const Enrollment = require('./Enrollment')(sequelize);
+const LotteryEntry = require('./LotteryEntry')(sequelize);
 const AttendanceSession = require('./AttendanceSession')(sequelize);
 const AttendanceRecord = require('./AttendanceRecord')(sequelize);
 
@@ -30,6 +31,11 @@ Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Enrollment.belongsTo(Student, { foreignKey: 'studentId' });
 Course.hasMany(Enrollment, { foreignKey: 'courseId' });
 Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
+
+Student.hasMany(LotteryEntry, { foreignKey: 'studentId' });
+LotteryEntry.belongsTo(Student, { foreignKey: 'studentId' });
+Course.hasMany(LotteryEntry, { foreignKey: 'courseId' });
+LotteryEntry.belongsTo(Course, { foreignKey: 'courseId' });
 
 Course.hasMany(AttendanceSession, { foreignKey: 'courseId' });
 AttendanceSession.belongsTo(Course, { foreignKey: 'courseId' });
@@ -47,6 +53,7 @@ module.exports = {
   Teacher,
   Course,
   Enrollment,
+  LotteryEntry,
   AttendanceSession,
   AttendanceRecord,
 };

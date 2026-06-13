@@ -59,6 +59,7 @@
       a.classList.toggle('active', a.dataset.page === page);
     });
     document.getElementById('page-courses').style.display = page === 'courses' ? 'block' : 'none';
+    document.getElementById('page-lottery').style.display = page === 'lottery' ? 'block' : 'none';
     document.getElementById('page-attendance').style.display = page === 'attendance' ? 'block' : 'none';
     document.getElementById('page-attendance-detail').style.display = page === 'attendance-detail' ? 'block' : 'none';
 
@@ -67,11 +68,17 @@
     if (page === 'courses') {
       headerTitle.textContent = '课程管理';
       headerSubtitle.textContent = '管理课程信息与容量';
+    } else if (page === 'lottery') {
+      headerTitle.textContent = '抽签中心';
+      headerSubtitle.textContent = '管理抽签课程与执行抽签';
     } else if (page === 'attendance' || page === 'attendance-detail') {
       headerTitle.textContent = '考勤历史';
       headerSubtitle.textContent = '查看历次点名出勤情况';
     }
 
+    if (page === 'lottery') {
+      loadLotteryCourses();
+    }
     if (page === 'attendance') {
       loadAttendanceList();
     }
@@ -99,7 +106,7 @@
         <tr>
           <td>${c.id}</td>
           <td>${escapeHtml(c.code)}</td>
-          <td>${escapeHtml(c.name)}</td>
+          <td>${escapeHtml(c.name)}${c.lotteryMode ? ' <span class="badge badge-lottery">抽签</span>' : ''}</td>
           <td>${c.credit ?? 0}</td>
           <td>${c.capacity ?? 0}</td>
           <td>${c.enrolled ?? 0}</td>
@@ -138,22 +145,21 @@
     document.getElementById('name').value = '';
     document.getElementById('credit').value = '';
     document.getElementById('capacity').value = '';
+    document.getElementById('lotteryMode').checked = false;
     modalTitle.textContent = '新增课程';
     modal.classList.remove('modal-editing');
     modal.classList.add('show');
   }
 
   function openEdit(id) {
-    const row = Array.from(document.querySelectorAll('#courseTableBody tr')).find(
-      (tr) => tr.querySelector('.edit-btn')?.dataset.id === String(id)
-    );
-    if (!row) return;
-    const cells = row.querySelectorAll('td');
+    const course = courses.find((c) => c.id === id);
+    if (!course) return;
     document.getElementById('courseId').value = id;
-    document.getElementById('code').value = cells[1].textContent;
-    document.getElementById('name').value = cells[2].textContent;
-    document.getElementById('credit').value = cells[3].textContent;
-    document.getElementById('capacity').value = cells[4].textContent;
+    document.getElementById('code').value = course.code;
+    document.getElementById('name').value = course.name;
+    document.getElementById('credit').value = course.credit;
+    document.getElementById('capacity').value = course.capacity;
+    document.getElementById('lotteryMode').checked = !!course.lotteryMode;
     modalTitle.textContent = '编辑课程';
     modal.classList.add('modal-editing', 'show');
   }
@@ -180,11 +186,12 @@
     const name = document.getElementById('name').value.trim();
     const credit = parseInt(document.getElementById('credit').value, 10);
     const capacity = parseInt(document.getElementById('capacity').value, 10);
+    const lotteryMode = document.getElementById('lotteryMode').checked;
     if (!code || !name || Number.isNaN(credit) || credit < 0 || Number.isNaN(capacity) || capacity < 0) {
       showToast('请填写完整且有效的字段', 'error');
       return;
     }
-    const payload = { code, name, credit, capacity };
+    const payload = { code, name, credit, capacity, lotteryMode };
     if (id) {
       const { data } = await api('/api/admin/courses/' + id, {
         method: 'PUT',
@@ -211,6 +218,74 @@
       }
     }
   });
+
+  // ========== 抽签中心 ==========
+  async function loadLotteryCourses() {
+    const tbody = document.getElementById('lotteryTableBody');
+    const { data } = await api('/api/admin/lottery/courses');
+    if (!data || !data.ok || !Array.isArray(data.data)) {
+      tbody.innerHTML =
+        '<tr><td colspan="9" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+    const rows = data.data;
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">暂无抽签课程，请在课程管理中开启抽签模式</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map(
+        (c) => {
+          const sc = c.statusCounts || {};
+          const waiting = sc.waiting || 0;
+          const won = sc.won || 0;
+          const lost = sc.lost || 0;
+          const hasWaiting = waiting > 0;
+          return `
+          <tr>
+            <td>${c.id}</td>
+            <td>${escapeHtml(c.code)}</td>
+            <td>${escapeHtml(c.name)}</td>
+            <td>${c.capacity ?? 0}</td>
+            <td>${c.entries ?? 0}</td>
+            <td><span class="badge badge-lottery-waiting">${waiting}</span></td>
+            <td><span class="badge badge-lottery-won">${won}</span></td>
+            <td><span class="badge badge-lottery-lost">${lost}</span></td>
+            <td>
+              <button type="button" class="btn btn-primary btn-sm execute-lottery-btn" data-id="${c.id}" ${!hasWaiting ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
+                ${hasWaiting ? '执行抽签' : '已开奖'}
+              </button>
+            </td>
+          </tr>`;
+        }
+      )
+      .join('');
+
+    tbody.querySelectorAll('.execute-lottery-btn:not([disabled])').forEach((btn) => {
+      btn.addEventListener('click', () => executeLottery(parseInt(btn.dataset.id, 10)));
+    });
+  }
+
+  async function executeLottery(courseId) {
+    if (!confirm('确定对该课程执行抽签？等待中的学生将被随机分配中签/未中签。')) return;
+    const btn = document.querySelector(`.execute-lottery-btn[data-id="${courseId}"]`);
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '抽签中...';
+    }
+    const { data } = await api('/api/admin/lottery/execute/' + courseId, { method: 'POST' });
+    if (data && data.ok) {
+      showToast(data.message || '抽签完成', 'success');
+      loadLotteryCourses();
+    } else {
+      showToast((data && data.message) || '抽签失败', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '执行抽签';
+      }
+    }
+  }
 
   // ========== 考勤管理 ==========
   async function loadAttendanceList() {
@@ -380,6 +455,25 @@
       color: #22c55e;
     }
     .badge-absent {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+    .badge-lottery {
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      margin-left: 6px;
+      font-size: 0.6875rem;
+      padding: 2px 8px;
+    }
+    .badge-lottery-waiting {
+      background: rgba(234, 179, 8, 0.15);
+      color: #eab308;
+    }
+    .badge-lottery-won {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .badge-lottery-lost {
       background: rgba(239, 68, 68, 0.15);
       color: #ef4444;
     }

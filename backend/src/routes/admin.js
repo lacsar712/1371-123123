@@ -2,7 +2,7 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const router = express.Router();
-const { Course, Enrollment, Student, AttendanceSession, AttendanceRecord } = require('../models');
+const { Course, Enrollment, Student, AttendanceSession, AttendanceRecord, LotteryEntry, sequelize } = require('../models');
 const { hashPassword } = require('../db');
 const logger = require('../logger');
 
@@ -91,7 +91,7 @@ router.delete('/students/:id', param('id').isInt({ min: 1 }), async (req, res) =
 router.get('/courses', async (req, res) => {
   const { sequelize } = require('../models');
   try {
-    const list = await Course.findAll({ order: [['id']], attributes: ['id', 'code', 'name', 'credit', 'capacity'] });
+    const list = await Course.findAll({ order: [['id']], attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode'] });
     const enrollCounts = await Enrollment.findAll({
       attributes: ['courseId', [sequelize.fn('COUNT', sequelize.col('id')), 'enrolled']],
       group: ['courseId'],
@@ -113,14 +113,15 @@ const courseValidators = [
   body('name').trim().notEmpty().withMessage('课程名称不能为空'),
   body('credit').isInt({ min: 0 }).withMessage('学分必须为非负整数'),
   body('capacity').isInt({ min: 0 }).withMessage('容量必须为非负整数'),
+  body('lotteryMode').optional().isBoolean().withMessage('抽签模式必须为布尔值'),
 ];
 
 router.post('/courses', courseValidators, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ ok: false, message: errors.array()[0].msg });
-  const { code, name, credit, capacity } = req.body;
+  const { code, name, credit, capacity, lotteryMode } = req.body;
   try {
-    const row = await Course.create({ code: code.trim(), name: name.trim(), credit: Number(credit), capacity: Number(capacity) });
+    const row = await Course.create({ code: code.trim(), name: name.trim(), credit: Number(credit), capacity: Number(capacity), lotteryMode: !!lotteryMode });
     return res.status(201).set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data: row.toJSON() });
   } catch (e) {
     if (e.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ ok: false, message: '课程代码已存在' });
@@ -133,13 +134,13 @@ router.put('/courses/:id', param('id').isInt({ min: 1 }), courseValidators, asyn
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ ok: false, message: errors.array()[0].msg });
   const id = parseInt(req.params.id, 10);
-  const { code, name, credit, capacity } = req.body;
+  const { code, name, credit, capacity, lotteryMode } = req.body;
   const cap = Number(capacity);
   try {
     const enrolled = await Enrollment.count({ where: { courseId: id } });
     if (enrolled > cap) return res.status(400).json({ ok: false, message: '容量不能小于已选人数' });
     const [n] = await Course.update(
-      { code: code.trim(), name: name.trim(), credit: Number(credit), capacity: cap },
+      { code: code.trim(), name: name.trim(), credit: Number(credit), capacity: cap, lotteryMode: !!lotteryMode },
       { where: { id } }
     );
     if (n === 0) return res.status(404).json({ ok: false, message: '课程不存在' });
@@ -155,6 +156,7 @@ router.put('/courses/:id', param('id').isInt({ min: 1 }), courseValidators, asyn
 router.delete('/courses/:id', param('id').isInt({ min: 1 }), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
+    await LotteryEntry.destroy({ where: { courseId: id } });
     await Enrollment.destroy({ where: { courseId: id } });
     const n = await Course.destroy({ where: { id } });
     if (n === 0) return res.status(404).json({ ok: false, message: '课程不存在' });
@@ -354,5 +356,93 @@ router.get(
     }
   }
 );
+
+// ========== 抽签中心 ==========
+router.get('/lottery/courses', async (req, res) => {
+  try {
+    const list = await Course.findAll({
+      where: { lotteryMode: true },
+      order: [['id']],
+      attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode'],
+    });
+    const entryCounts = await LotteryEntry.findAll({
+      attributes: ['courseId', [sequelize.fn('COUNT', sequelize.col('id')), 'entries']],
+      group: ['courseId'],
+      raw: true,
+    });
+    const countMap = Object.fromEntries(entryCounts.map((r) => [r.courseId, Number(r.entries) || 0]));
+    const statusCounts = await LotteryEntry.findAll({
+      attributes: ['courseId', 'status', [sequelize.fn('COUNT', sequelize.col('id')), 'cnt']],
+      group: ['courseId', 'status'],
+      raw: true,
+    });
+    const statusMap = {};
+    statusCounts.forEach((r) => {
+      if (!statusMap[r.courseId]) statusMap[r.courseId] = {};
+      statusMap[r.courseId][r.status] = Number(r.cnt) || 0;
+    });
+    const data = list.map((c) => ({
+      ...c.toJSON(),
+      entries: countMap[c.id] ?? 0,
+      statusCounts: statusMap[c.id] || {},
+    }));
+    return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data });
+  } catch (e) {
+    logger.error('Lottery courses list error', { error: e.message });
+    return res.status(500).json({ ok: false, message: '服务器错误' });
+  }
+});
+
+router.post('/lottery/execute/:courseId', param('courseId').isInt({ min: 1 }), async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ ok: false, message: errors.array()[0].msg });
+  const courseId = parseInt(req.params.courseId, 10);
+  try {
+    const course = await Course.findByPk(courseId);
+    if (!course) return res.status(404).json({ ok: false, message: '课程不存在' });
+    if (!course.lotteryMode) return res.status(400).json({ ok: false, message: '该课程未开启抽签模式' });
+    const waitingEntries = await LotteryEntry.findAll({
+      where: { courseId, status: 'waiting' },
+      order: [['id', 'ASC']],
+    });
+    if (!waitingEntries.length) return res.status(400).json({ ok: false, message: '没有等待抽签的学生' });
+    const alreadyEnrolled = await Enrollment.count({ where: { courseId } });
+    const remaining = Math.max(0, course.capacity - alreadyEnrolled);
+    const shuffled = [...waitingEntries].sort(() => Math.random() - 0.5);
+    const winners = shuffled.slice(0, remaining);
+    const losers = shuffled.slice(remaining);
+    const t = await sequelize.transaction();
+    try {
+      if (winners.length) {
+        await LotteryEntry.update(
+          { status: 'won' },
+          { where: { id: winners.map((w) => w.id) }, transaction: t }
+        );
+        await Enrollment.bulkCreate(
+          winners.map((w) => ({ studentId: w.studentId, courseId })),
+          { transaction: t, ignoreDuplicates: true }
+        );
+      }
+      if (losers.length) {
+        await LotteryEntry.update(
+          { status: 'lost' },
+          { where: { id: losers.map((l) => l.id) }, transaction: t }
+        );
+      }
+      await t.commit();
+    } catch (e) {
+      await t.rollback();
+      throw e;
+    }
+    return res.set('Content-Type', 'application/json; charset=utf-8').json({
+      ok: true,
+      message: `抽签完成：${winners.length} 人中签，${losers.length} 人未中签`,
+      data: { won: winners.length, lost: losers.length },
+    });
+  } catch (e) {
+    logger.error('Lottery execute error', { error: e.message });
+    return res.status(500).json({ ok: false, message: '服务器错误' });
+  }
+});
 
 module.exports = router;

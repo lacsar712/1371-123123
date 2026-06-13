@@ -9,6 +9,7 @@ module.exports = (sequelize) => {
       name: { type: DataTypes.STRING(128), allowNull: false },
       credit: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
       capacity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+      lotteryMode: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'lottery_mode' },
     },
     { tableName: 'course' }
   );

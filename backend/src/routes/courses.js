@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
     const list = await Course.findAll({
       where,
       order: [['id']],
-      attributes: ['id', 'code', 'name', 'credit', 'capacity'],
+      attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode'],
     });
     const enrollCounts = await Enrollment.findAll({
       attributes: ['courseId', [sequelize.fn('COUNT', sequelize.col('id')), 'enrolled']],
@@ -30,6 +30,7 @@ router.get('/', async (req, res) => {
       name: c.name,
       credit: c.credit,
       capacity: c.capacity,
+      lotteryMode: c.lotteryMode,
       enrolled: countMap[c.id] ?? 0,
     }));
     return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data });
@@ -43,7 +44,7 @@ router.get('/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ ok: false, message: '无效的课程 ID' });
   try {
-    const course = await Course.findByPk(id, { attributes: ['id', 'code', 'name', 'credit', 'capacity'] });
+    const course = await Course.findByPk(id, { attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode'] });
     if (!course) return res.status(404).json({ ok: false, message: '课程不存在' });
     const enrolled = await Enrollment.count({ where: { courseId: id } });
     const data = { ...course.toJSON(), enrolled };

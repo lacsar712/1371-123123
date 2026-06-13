@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS course (
   name TEXT NOT NULL,
   credit INTEGER NOT NULL DEFAULT 0,
   capacity INTEGER NOT NULL DEFAULT 0,
+  lottery_mode INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -72,3 +73,17 @@ CREATE INDEX IF NOT EXISTS idx_attendance_session_course ON attendance_session(c
 CREATE INDEX IF NOT EXISTS idx_attendance_session_code ON attendance_session(code);
 CREATE INDEX IF NOT EXISTS idx_attendance_record_session ON attendance_record(session_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_record_student ON attendance_record(student_id);
+
+CREATE TABLE IF NOT EXISTS lottery_entry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  course_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'waiting',
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  UNIQUE(student_id, course_id),
+  FOREIGN KEY (student_id) REFERENCES student(id),
+  FOREIGN KEY (course_id) REFERENCES course(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lottery_entry_student ON lottery_entry(student_id);
+CREATE INDEX IF NOT EXISTS idx_lottery_entry_course ON lottery_entry(course_id);

@@ -20,6 +20,10 @@
           <span class="nav-icon" aria-hidden="true">📋</span>
           <span>课程管理</span>
         </a>
+        <a href="#" data-page="lottery">
+          <span class="nav-icon" aria-hidden="true">🎰</span>
+          <span>抽签中心</span>
+        </a>
         <a href="#" data-page="attendance">
           <span class="nav-icon" aria-hidden="true">📊</span>
           <span>考勤历史</span>
@@ -57,6 +61,32 @@
               </thead>
               <tbody id="courseTableBody">
                 <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="page-lottery" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title">抽签课程</h2>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>课程代码</th>
+                  <th>课程名称</th>
+                  <th>容量</th>
+                  <th>报名人数</th>
+                  <th>等待</th>
+                  <th>中签</th>
+                  <th>未中签</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="lotteryTableBody">
+                <tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
               </tbody>
             </table>
           </div>
@@ -141,6 +171,10 @@
         <div class="form-group">
           <label for="capacity">容量</label>
           <input type="number" id="capacity" name="capacity" min="0" required />
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:12px;padding-top:4px;">
+          <input type="checkbox" id="lotteryMode" name="lotteryMode" style="width:20px;height:20px;accent-color:var(--accent-start);cursor:pointer;" />
+          <label for="lotteryMode" style="position:static;transform:none;cursor:pointer;font-size:0.9375rem;color:var(--text-primary);margin:0;">抽签模式</label>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="modalCancel">取消</button>
