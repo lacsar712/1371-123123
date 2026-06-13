@@ -2,13 +2,13 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 const { hashPassword } = require('../db');
-const { Admin, Student } = require('../models');
+const { Admin, Student, Teacher } = require('../models');
 const logger = require('../logger');
 
 const loginValidators = [
   body('username').trim().notEmpty().withMessage('用户名/学号不能为空'),
   body('password').notEmpty().withMessage('密码不能为空'),
-  body('role').isIn(['student', 'admin']).withMessage('无效的身份'),
+  body('role').isIn(['student', 'teacher', 'admin']).withMessage('无效的身份'),
 ];
 
 function sendJson(res, status, body) {
@@ -31,6 +31,17 @@ router.post('/login', loginValidators, async (req, res) => {
         return sendJson(res, 401, { ok: false, message: '用户名或密码错误' });
       }
       return sendJson(res, 200, { ok: true, data: { id: row.id, username: row.username, role: 'admin' } });
+    }
+    if (role === 'teacher') {
+      const row = await Teacher.findOne({
+        where: { teacherNo: username, passwordHash: hash },
+        attributes: ['id', 'teacherNo', 'name'],
+      });
+      if (!row) {
+        logger.warn('Teacher login failed', { username });
+        return sendJson(res, 401, { ok: false, message: '工号或密码错误' });
+      }
+      return sendJson(res, 200, { ok: true, data: { id: row.id, teacherNo: row.teacherNo, name: row.name, role: 'teacher' } });
     }
     const row = await Student.findOne({
       where: { studentNo: username, passwordHash: hash },

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const logger = require('./logger');
-const { Admin, Student, Course, Enrollment } = require('./models');
+const { Admin, Student, Teacher, Course, Enrollment } = require('./models');
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password, 'utf8').digest('hex');
@@ -29,6 +29,19 @@ async function ensureTestAccounts() {
     });
     if (!created && student.passwordHash !== TEST_PASSWORD_HASH) {
       await student.update({ passwordHash: TEST_PASSWORD_HASH, name: s.name });
+    }
+  }
+  const testTeachers = [
+    { teacherNo: 'teacher', name: '李老师' },
+    { teacherNo: 'T2024001', name: '王教授' },
+  ];
+  for (const t of testTeachers) {
+    const [teacher, created] = await Teacher.findOrCreate({
+      where: { teacherNo: t.teacherNo },
+      defaults: { name: t.name, passwordHash: TEST_PASSWORD_HASH },
+    });
+    if (!created && teacher.passwordHash !== TEST_PASSWORD_HASH) {
+      await teacher.update({ passwordHash: TEST_PASSWORD_HASH, name: t.name });
     }
   }
   logger.info('Test accounts ensured');

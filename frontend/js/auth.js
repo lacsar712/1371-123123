@@ -58,6 +58,8 @@
       sessionStorage.setItem('user', JSON.stringify(data.data));
       if (data.data.role === 'admin') {
         window.location.href = 'admin.html';
+      } else if (data.data.role === 'teacher') {
+        window.location.href = 'teacher.html';
       } else {
         window.location.href = 'student.html';
       }

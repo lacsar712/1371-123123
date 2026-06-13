@@ -20,18 +20,33 @@ const sequelize = new Sequelize({
 
 const Admin = require('./Admin')(sequelize);
 const Student = require('./Student')(sequelize);
+const Teacher = require('./Teacher')(sequelize);
 const Course = require('./Course')(sequelize);
 const Enrollment = require('./Enrollment')(sequelize);
+const AttendanceSession = require('./AttendanceSession')(sequelize);
+const AttendanceRecord = require('./AttendanceRecord')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Enrollment.belongsTo(Student, { foreignKey: 'studentId' });
 Course.hasMany(Enrollment, { foreignKey: 'courseId' });
 Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
 
+Course.hasMany(AttendanceSession, { foreignKey: 'courseId' });
+AttendanceSession.belongsTo(Course, { foreignKey: 'courseId' });
+
+AttendanceSession.hasMany(AttendanceRecord, { foreignKey: 'sessionId' });
+AttendanceRecord.belongsTo(AttendanceSession, { foreignKey: 'sessionId' });
+
+Student.hasMany(AttendanceRecord, { foreignKey: 'studentId' });
+AttendanceRecord.belongsTo(Student, { foreignKey: 'studentId' });
+
 module.exports = {
   sequelize,
   Admin,
   Student,
+  Teacher,
   Course,
   Enrollment,
+  AttendanceSession,
+  AttendanceRecord,
 };

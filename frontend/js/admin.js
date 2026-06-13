@@ -1,6 +1,9 @@
 (function () {
   const API_BASE = window.API_BASE || '';
   let user = null;
+  let courses = [];
+  let currentPage = 'courses';
+  let currentSessionId = null;
 
   function getStoredUser() {
     try {
@@ -26,7 +29,10 @@
     return fetch(API_BASE + path, {
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
-    }).then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })));
+    }).then((r) => {
+      if (options.download) return { ok: r.ok, response: r };
+      return r.json().then((d) => ({ ok: r.ok, status: r.status, data: d }));
+    });
   }
 
   function escapeHtml(s) {
@@ -35,6 +41,43 @@
     return div.innerHTML;
   }
 
+  function formatDateTime(date) {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function showPage(page) {
+    currentPage = page;
+    document.querySelectorAll('.sidebar-nav a').forEach((a) => {
+      a.classList.toggle('active', a.dataset.page === page);
+    });
+    document.getElementById('page-courses').style.display = page === 'courses' ? 'block' : 'none';
+    document.getElementById('page-attendance').style.display = page === 'attendance' ? 'block' : 'none';
+    document.getElementById('page-attendance-detail').style.display = page === 'attendance-detail' ? 'block' : 'none';
+
+    const headerTitle = document.querySelector('.admin-header h1');
+    const headerSubtitle = document.querySelector('.admin-header .header-subtitle');
+    if (page === 'courses') {
+      headerTitle.textContent = '课程管理';
+      headerSubtitle.textContent = '管理课程信息与容量';
+    } else if (page === 'attendance' || page === 'attendance-detail') {
+      headerTitle.textContent = '考勤历史';
+      headerSubtitle.textContent = '查看历次点名出勤情况';
+    }
+
+    if (page === 'attendance') {
+      loadAttendanceList();
+    }
+  }
+
+  // ========== 课程管理 ==========
   async function loadCourses() {
     const tbody = document.getElementById('courseTableBody');
     const { data } = await api('/api/admin/courses');
@@ -44,8 +87,10 @@
       return;
     }
     const rows = data.data;
+    courses = rows;
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">暂无课程</td></tr>';
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">暂无课程</td></tr>';
       return;
     }
     tbody.innerHTML = rows
@@ -72,6 +117,15 @@
     tbody.querySelectorAll('.delete-btn').forEach((btn) => {
       btn.addEventListener('click', () => doDelete(parseInt(btn.dataset.id, 10)));
     });
+
+    const courseFilter = document.getElementById('attendanceCourseFilter');
+    if (courseFilter) {
+      courseFilter.innerHTML =
+        '<option value="">全部课程</option>' +
+        rows
+          .map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`)
+          .join('');
+    }
   }
 
   const modal = document.getElementById('modalOverlay');
@@ -158,21 +212,115 @@
     }
   });
 
-  document.getElementById('modalCancel').addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
-  });
+  // ========== 考勤管理 ==========
+  async function loadAttendanceList() {
+    const tbody = document.getElementById('attendanceTableBody');
+    const courseId = document.getElementById('attendanceCourseFilter').value;
+    const path = courseId ? `/api/admin/attendance?courseId=${courseId}` : '/api/admin/attendance';
 
-  document.getElementById('addCourseBtn').addEventListener('click', openAdd);
-  document.getElementById('logoutBtn').addEventListener('click', (e) => {
-    sessionStorage.removeItem('user');
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(API_BASE + '/api/auth/logout', '');
-    } else {
-      fetch(API_BASE + '/api/auth/logout', { method: 'POST' }).catch(() => {});
+    const { data } = await api(path);
+    if (!data || !data.ok || !Array.isArray(data.data)) {
+      tbody.innerHTML =
+        '<tr><td colspan="8" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
     }
-    // 不 preventDefault，让 <a href> 原生跳转，Chrome 下更可靠
-  });
+    const rows = data.data;
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);">暂无考勤记录</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map(
+        (s) => `
+        <tr>
+          <td>${s.id}</td>
+          <td>${escapeHtml(s.course?.name || '')} <span style="color:var(--text-secondary);font-size:0.8125rem;">(${escapeHtml(s.course?.code || '')})</span></td>
+          <td style="font-family:monospace;font-weight:700;letter-spacing:0.25rem;">${s.code}</td>
+          <td>${formatDateTime(s.startTime)}</td>
+          <td>${formatDateTime(s.endTime)}</td>
+          <td>
+            <span class="badge ${s.status === 'active' ? 'badge-active' : 'badge-ended'}">
+              ${s.status === 'active' ? '进行中' : '已结束'}
+            </span>
+          </td>
+          <td>${s.signedCount} / ${s.totalCount}</td>
+          <td>
+            <button type="button" class="btn btn-ghost btn-sm view-btn" data-id="${s.id}">查看详情</button>
+          </td>
+        </tr>`
+      )
+      .join('');
+
+    tbody.querySelectorAll('.view-btn').forEach((btn) => {
+      btn.addEventListener('click', () => viewAttendanceDetail(parseInt(btn.dataset.id, 10)));
+    });
+  }
+
+  async function viewAttendanceDetail(sessionId) {
+    currentSessionId = sessionId;
+    const { data } = await api(`/api/admin/attendance/${sessionId}`);
+    if (!data || !data.ok) {
+      showToast((data && data.message) || '加载失败', 'error');
+      return;
+    }
+
+    const detail = data.data;
+    document.getElementById('attendanceDetailTitle').textContent =
+      `${detail.course?.name || ''} - 考勤详情`;
+
+    const statsEl = document.getElementById('attendanceDetailStats');
+    statsEl.innerHTML = `
+      <div class="stat-card">
+        <div class="value" style="color:var(--accent-start);font-size:2rem;font-weight:800;">${detail.totalCount}</div>
+        <div class="label" style="color:var(--text-secondary);font-size:0.875rem;">应到人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" style="color:var(--success);font-size:2rem;font-weight:800;">${detail.signedCount}</div>
+        <div class="label" style="color:var(--text-secondary);font-size:0.875rem;">已签到</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" style="color:var(--danger);font-size:2rem;font-weight:800;">${detail.absentCount}</div>
+        <div class="label" style="color:var(--text-secondary);font-size:0.875rem;">缺勤</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" style="color:var(--text-secondary);font-size:2rem;font-weight:800;">${detail.code}</div>
+        <div class="label" style="color:var(--text-secondary);font-size:0.875rem;">签到码</div>
+      </div>
+    `;
+
+    const tbody = document.getElementById('attendanceDetailBody');
+    tbody.innerHTML = detail.students
+      .map(
+        (s) => `
+        <tr class="${s.status === 'absent' ? 'row-absent' : ''}">
+          <td>${escapeHtml(s.studentNo || '')}</td>
+          <td>${escapeHtml(s.studentName || '')}</td>
+          <td>
+            <span class="badge ${s.status === 'signed' ? 'badge-signed' : 'badge-absent'}">
+              ${s.status === 'signed' ? '已签到' : '缺勤'}
+            </span>
+          </td>
+          <td class="sign-in-time">${s.signInTime ? formatDateTime(s.signInTime) : '-'}</td>
+        </tr>
+      `
+      )
+      .join('');
+
+    showPage('attendance-detail');
+  }
+
+  async function exportAbsent() {
+    if (!currentSessionId) return;
+    try {
+      const link = document.createElement('a');
+      link.href = API_BASE + `/api/admin/attendance/${currentSessionId}/export`;
+      link.click();
+      showToast('导出成功', 'success');
+    } catch (e) {
+      showToast('导出失败', 'error');
+    }
+  }
 
   function init() {
     user = getStoredUser();
@@ -180,8 +328,82 @@
       window.location.href = 'index.html';
       return;
     }
+
+    document.querySelectorAll('.sidebar-nav a').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        showPage(a.dataset.page);
+      });
+    });
+
+    document.getElementById('modalCancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    document.getElementById('addCourseBtn').addEventListener('click', openAdd);
+    document.getElementById('logoutBtn').addEventListener('click', (e) => {
+      sessionStorage.removeItem('user');
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(API_BASE + '/api/auth/logout', '');
+      } else {
+        fetch(API_BASE + '/api/auth/logout', { method: 'POST' }).catch(() => {});
+      }
+    });
+
+    document.getElementById('attendanceCourseFilter').addEventListener('change', loadAttendanceList);
+    document.getElementById('backToAttendanceList').addEventListener('click', () => showPage('attendance'));
+    document.getElementById('exportAbsentBtn').addEventListener('click', exportAbsent);
+
     loadCourses();
   }
+
+  const style = document.createElement('style');
+  style.textContent = `
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-active {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .badge-ended {
+      background: rgba(161, 161, 170, 0.15);
+      color: #a1a1aa;
+    }
+    .badge-signed {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .badge-absent {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+    .row-absent {
+      background: rgba(239, 68, 68, 0.08) !important;
+    }
+    .row-absent:hover {
+      background: rgba(239, 68, 68, 0.15) !important;
+    }
+    .stat-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+    }
+    .sign-in-time {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-variant-numeric: tabular-nums;
+    }
+  `;
+  document.head.appendChild(style);
 
   init();
 })();

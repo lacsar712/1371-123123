@@ -125,6 +125,77 @@
     return div.innerHTML;
   }
 
+  function formatDateTime(date) {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  async function signIn() {
+    const code = document.getElementById('attendanceCode').value.trim();
+    if (!code || code.length !== 6) {
+      showToast('请输入 6 位签到码', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('signInBtn');
+    btn.disabled = true;
+    btn.textContent = '签到中...';
+
+    try {
+      const { data } = await api('/api/attendance/signin', {
+        method: 'POST',
+        body: JSON.stringify({ code, studentId: user.id }),
+      });
+
+      if (data && data.ok) {
+        showToast('签到成功', 'success');
+        document.getElementById('attendanceCode').value = '';
+        loadAttendanceRecords();
+      } else {
+        showToast((data && data.message) || '签到失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '立即签到';
+    }
+  }
+
+  async function loadAttendanceRecords() {
+    const tbody = document.getElementById('attendanceRecordsBody');
+    const { data } = await api(`/api/attendance/student/${user.id}/records`);
+    if (data && data.ok && Array.isArray(data.data)) {
+      const records = data.data;
+      if (!records.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">暂无签到记录</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records
+        .map((r) => `
+          <tr>
+            <td>${escapeHtml(r.courseName || '')}</td>
+            <td>${escapeHtml(r.courseCode || '')}</td>
+            <td>${formatDateTime(r.signInTime)}</td>
+            <td>${formatDateTime(r.sessionStartTime)}</td>
+          </tr>
+        `)
+        .join('');
+    } else {
+      tbody.innerHTML =
+        '<tr><td colspan="4" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+    }
+  }
+
   async function loadCourses(keyword = '') {
     const path = keyword ? '/api/courses?keyword=' + encodeURIComponent(keyword) : '/api/courses';
     const { data } = await api(path);
@@ -202,7 +273,12 @@
       if (e.key === 'Enter') loadCourses(e.target.value.trim());
     });
 
-    Promise.all([loadCourses(), loadMyCourses()]);
+    document.getElementById('signInBtn').addEventListener('click', signIn);
+    document.getElementById('attendanceCode').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') signIn();
+    });
+
+    Promise.all([loadCourses(), loadMyCourses(), loadAttendanceRecords()]);
   }
 
   init();

@@ -1,7 +1,8 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 const router = express.Router();
-const { Course, Enrollment, Student } = require('../models');
+const { Course, Enrollment, Student, AttendanceSession, AttendanceRecord } = require('../models');
 const { hashPassword } = require('../db');
 const logger = require('../logger');
 
@@ -163,5 +164,195 @@ router.delete('/courses/:id', param('id').isInt({ min: 1 }), async (req, res) =>
     return res.status(500).json({ ok: false, message: '服务器错误' });
   }
 });
+
+// ========== 考勤管理 ==========
+router.get('/attendance', async (req, res) => {
+  const courseId = req.query.courseId ? parseInt(req.query.courseId, 10) : null;
+  try {
+    const where = courseId ? { courseId } : {};
+    const sessions = await AttendanceSession.findAll({
+      where,
+      include: [{ model: Course, as: 'Course', attributes: ['id', 'name', 'code'] }],
+      order: [['startTime', 'DESC']],
+    });
+
+    const sessionIds = sessions.map((s) => s.id);
+    const recordCounts = await AttendanceRecord.findAll({
+      where: { sessionId: { [Op.in]: sessionIds } },
+      attributes: ['sessionId', [AttendanceRecord.sequelize.fn('COUNT', AttendanceRecord.sequelize.col('id')), 'count']],
+      group: ['sessionId'],
+      raw: true,
+    });
+    const countMap = Object.fromEntries(
+      recordCounts.map((r) => [r.sessionId, Number(r.count) || 0])
+    );
+
+    const enrollments = await Enrollment.findAll({
+      where: courseId ? { courseId } : {},
+      attributes: ['courseId', [Enrollment.sequelize.fn('COUNT', Enrollment.sequelize.col('id')), 'count']],
+      group: ['courseId'],
+      raw: true,
+    });
+    const enrollMap = Object.fromEntries(
+      enrollments.map((e) => [e.courseId, Number(e.count) || 0])
+    );
+
+    const data = sessions.map((s) => {
+      const now = new Date();
+      const isActive = s.status === 1 && now < new Date(s.endTime);
+      return {
+        id: s.id,
+        code: s.code,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        duration: s.duration,
+        status: isActive ? 'active' : 'ended',
+        course: s.Course
+          ? {
+              id: s.Course.id,
+              name: s.Course.name,
+              code: s.Course.code,
+            }
+          : null,
+        signedCount: countMap[s.id] || 0,
+        totalCount: enrollMap[s.courseId] || 0,
+      };
+    });
+
+    return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data });
+  } catch (e) {
+    logger.error('Admin attendance list error', { error: e.message });
+    return res.status(500).json({ ok: false, message: '服务器错误' });
+  }
+});
+
+router.get(
+  '/attendance/:sessionId',
+  param('sessionId').isInt({ min: 1 }).withMessage('无效的签到 ID'),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ ok: false, message: errors.array()[0].msg });
+
+    const sessionId = parseInt(req.params.sessionId, 10);
+
+    try {
+      const session = await AttendanceSession.findByPk(sessionId, {
+        include: [{ model: Course, as: 'Course', attributes: ['id', 'name', 'code'] }],
+      });
+
+      if (!session)
+        return res.status(404).json({ ok: false, message: '签到不存在' });
+
+      const records = await AttendanceRecord.findAll({
+        where: { sessionId },
+        include: [{ model: Student, as: 'Student', attributes: ['id', 'studentNo', 'name'] }],
+        order: [['signInTime', 'ASC']],
+      });
+
+      const enrolled = await Enrollment.findAll({
+        where: { courseId: session.courseId },
+        include: [{ model: Student, as: 'Student', attributes: ['id', 'studentNo', 'name'] }],
+        order: [[Student, 'studentNo', 'ASC']],
+      });
+
+      const signedIds = new Set(records.map((r) => r.studentId));
+      const signedMap = new Map(records.map((r) => [r.studentId, r]));
+
+      const allStudents = enrolled.map((e) => {
+        const record = signedMap.get(e.studentId);
+        return {
+          studentId: e.studentId,
+          studentNo: e.Student?.studentNo,
+          studentName: e.Student?.name,
+          status: record ? 'signed' : 'absent',
+          signInTime: record?.signInTime || null,
+        };
+      });
+
+      const data = {
+        id: session.id,
+        code: session.code,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        duration: session.duration,
+        course: session.Course
+          ? {
+              id: session.Course.id,
+              name: session.Course.name,
+              code: session.Course.code,
+            }
+          : null,
+        signedCount: records.length,
+        absentCount: enrolled.length - records.length,
+        totalCount: enrolled.length,
+        students: allStudents,
+      };
+
+      return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data });
+    } catch (e) {
+      logger.error('Admin attendance detail error', { error: e.message });
+      return res.status(500).json({ ok: false, message: '服务器错误' });
+    }
+  }
+);
+
+router.get(
+  '/attendance/:sessionId/export',
+  param('sessionId').isInt({ min: 1 }).withMessage('无效的签到 ID'),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ ok: false, message: errors.array()[0].msg });
+
+    const sessionId = parseInt(req.params.sessionId, 10);
+
+    try {
+      const session = await AttendanceSession.findByPk(sessionId, {
+        include: [{ model: Course, as: 'Course', attributes: ['id', 'name', 'code'] }],
+      });
+
+      if (!session)
+        return res.status(404).json({ ok: false, message: '签到不存在' });
+
+      const records = await AttendanceRecord.findAll({
+        where: { sessionId },
+        include: [{ model: Student, as: 'Student', attributes: ['id', 'studentNo', 'name'] }],
+      });
+
+      const enrolled = await Enrollment.findAll({
+        where: { courseId: session.courseId },
+        include: [{ model: Student, as: 'Student', attributes: ['id', 'studentNo', 'name'] }],
+        order: [[Student, 'studentNo', 'ASC']],
+      });
+
+      const signedIds = new Set(records.map((r) => r.studentId));
+      const absent = enrolled
+        .filter((e) => !signedIds.has(e.studentId))
+        .map((e) => ({
+          studentNo: e.Student?.studentNo || '',
+          studentName: e.Student?.name || '',
+        }));
+
+      const dateStr = new Date(session.startTime)
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .slice(0, 16);
+      const filename = `缺勤名单_${session.Course?.code || ''}_${dateStr}.csv`;
+
+      const csvContent =
+        '\uFEFF' +
+        '学号,姓名\n' +
+        absent.map((s) => `${s.studentNo},${s.studentName}`).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (e) {
+      logger.error('Export attendance error', { error: e.message });
+      return res.status(500).json({ ok: false, message: '导出失败' });
+    }
+  }
+);
 
 module.exports = router;

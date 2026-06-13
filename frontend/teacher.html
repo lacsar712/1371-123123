@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生选课系统 - 教师端</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .attendance-code {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: 0.5rem;
+      color: var(--accent-start);
+      text-align: center;
+      padding: 32px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+      border: 2px solid var(--accent-start);
+      border-radius: var(--radius);
+      margin: 24px 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .countdown {
+      font-size: 2rem;
+      font-weight: 700;
+      text-align: center;
+      color: var(--text-primary);
+      margin: 16px 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .countdown.warning {
+      color: #f59e0b;
+    }
+
+    .countdown.danger {
+      color: var(--danger);
+    }
+
+    .attendance-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .stat-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+    }
+
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent-start);
+      margin-bottom: 8px;
+    }
+
+    .stat-card .label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .course-select {
+      width: 100%;
+      max-width: 400px;
+      margin-bottom: 24px;
+    }
+
+    .course-select select {
+      width: 100%;
+      height: 56px;
+      padding: 0 16px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 1rem;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 18px;
+      padding-right: 44px;
+    }
+
+    .attendance-list {
+      margin-top: 24px;
+    }
+
+    .attendance-list h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-secondary);
+    }
+
+    .attendance-list table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .attendance-list th,
+    .attendance-list td {
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--bg-glass-border);
+    }
+
+    .attendance-list th {
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .attendance-list tbody tr {
+      transition: background 0.2s;
+    }
+
+    .attendance-list tbody tr:hover {
+      background: rgba(99, 102, 241, 0.06);
+    }
+
+    .sign-in-time {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state .icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .action-bar .btn {
+      min-width: 160px;
+    }
+
+    .course-info {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+
+    .course-info .name {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .course-info .code {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+  <header class="student-header page-enter">
+    <h1>考勤管理</h1>
+    <div>
+      <span id="userName" style="margin-right:12px;color:var(--text-secondary);"></span>
+      <a href="index.html" class="btn btn-ghost" id="logoutBtn" role="button">退出</a>
+    </div>
+  </header>
+  <main class="student-main page-enter">
+    <section id="selectCourseSection">
+      <h2 class="section-title">选择课程发起签到</h2>
+      <div class="course-select">
+        <select id="courseSelect">
+          <option value="">请选择课程</option>
+        </select>
+      </div>
+      <div class="action-bar">
+        <button type="button" class="btn btn-primary" id="startBtn">发起签到</button>
+      </div>
+    </section>
+
+    <section id="activeSessionSection" style="display:none;">
+      <div class="course-info">
+        <div class="name" id="activeCourseName"></div>
+        <div class="code" id="activeCourseCode"></div>
+      </div>
+
+      <h2 class="section-title">签到码</h2>
+      <div class="attendance-code" id="attendanceCode">------</div>
+
+      <h2 class="section-title">剩余时间</h2>
+      <div class="countdown" id="countdown">05:00</div>
+
+      <div class="attendance-stats">
+        <div class="stat-card">
+          <div class="value" id="signedCount">0</div>
+          <div class="label">已签到</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="totalCount">0</div>
+          <div class="label">总人数</div>
+        </div>
+      </div>
+
+      <div class="attendance-list">
+        <h3>签到列表（按签到时间排序）</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>序号</th>
+                <th>学号</th>
+                <th>姓名</th>
+                <th>签到时间</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceTableBody">
+              <tr>
+                <td colspan="4" class="empty-state">
+                  <div class="icon">📋</div>
+                  <div>暂无签到记录</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <button type="button" class="btn btn-ghost" id="endBtn">结束签到</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+  <script src="js/teacher.js"></script>
+</body>
+</html>

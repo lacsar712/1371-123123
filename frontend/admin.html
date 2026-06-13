@@ -20,6 +20,10 @@
           <span class="nav-icon" aria-hidden="true">📋</span>
           <span>课程管理</span>
         </a>
+        <a href="#" data-page="attendance">
+          <span class="nav-icon" aria-hidden="true">📊</span>
+          <span>考勤历史</span>
+        </a>
       </nav>
     </aside>
     <div class="admin-main">
@@ -31,30 +35,88 @@
         <a href="index.html" class="btn btn-ghost btn-sm" id="logoutBtn" role="button">退出登录</a>
       </header>
       <div class="admin-content">
-        <section class="content-toolbar">
-          <h2 class="toolbar-title">课程列表</h2>
-          <div class="toolbar-actions">
-            <button type="button" class="btn btn-primary" id="addCourseBtn">＋ 新增课程</button>
+        <div id="page-courses">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title">课程列表</h2>
+            <div class="toolbar-actions">
+              <button type="button" class="btn btn-primary" id="addCourseBtn">＋ 新增课程</button>
+            </div>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>课程代码</th>
+                  <th>课程名称</th>
+                  <th>学分</th>
+                  <th>容量</th>
+                  <th>已选</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="courseTableBody">
+                <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+              </tbody>
+            </table>
           </div>
-        </section>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>课程代码</th>
-              <th>课程名称</th>
-              <th>学分</th>
-              <th>容量</th>
-              <th>已选</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="courseTableBody">
-            <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
-          </tbody>
-        </table>
-      </div>
+        </div>
+
+        <div id="page-attendance" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title">考勤历史</h2>
+            <div class="toolbar-actions">
+              <div style="display:flex;gap:12px;align-items:center;">
+                <select id="attendanceCourseFilter" style="height:48px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:44px;min-width:180px;">
+                  <option value="">全部课程</option>
+                </select>
+              </div>
+            </div>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>课程名称</th>
+                  <th>签到码</th>
+                  <th>发起时间</th>
+                  <th>结束时间</th>
+                  <th>状态</th>
+                  <th>出勤</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="attendanceTableBody">
+                <tr><td colspan="8" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="page-attendance-detail" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title" id="attendanceDetailTitle">考勤详情</h2>
+            <div class="toolbar-actions">
+              <button type="button" class="btn btn-ghost" id="backToAttendanceList">← 返回列表</button>
+              <button type="button" class="btn btn-primary" id="exportAbsentBtn">导出缺勤名单</button>
+            </div>
+          </section>
+          <div id="attendanceDetailStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>学号</th>
+                  <th>姓名</th>
+                  <th>状态</th>
+                  <th>签到时间</th>
+                </tr>
+              </thead>
+              <tbody id="attendanceDetailBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>

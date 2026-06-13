@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS admin (
   created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS teacher (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  teacher_no TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS student (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   student_no TEXT NOT NULL UNIQUE,
@@ -38,3 +46,29 @@ CREATE TABLE IF NOT EXISTS enrollment (
 
 CREATE INDEX IF NOT EXISTS idx_enrollment_student ON enrollment(student_id);
 CREATE INDEX IF NOT EXISTS idx_enrollment_course ON enrollment(course_id);
+
+CREATE TABLE IF NOT EXISTS attendance_session (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id INTEGER NOT NULL,
+  code TEXT(6) NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  duration INTEGER NOT NULL DEFAULT 300,
+  status TINYINT NOT NULL DEFAULT 1,
+  FOREIGN KEY (course_id) REFERENCES course(id)
+);
+
+CREATE TABLE IF NOT EXISTS attendance_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  student_id INTEGER NOT NULL,
+  sign_in_time TEXT DEFAULT (datetime('now', 'localtime')),
+  UNIQUE(session_id, student_id),
+  FOREIGN KEY (session_id) REFERENCES attendance_session(id),
+  FOREIGN KEY (student_id) REFERENCES student(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_session_course ON attendance_session(course_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_session_code ON attendance_session(code);
+CREATE INDEX IF NOT EXISTS idx_attendance_record_session ON attendance_record(session_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_record_student ON attendance_record(student_id);
