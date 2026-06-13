@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生选课系统 - 学生端</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg-mesh"></div>
+  <header class="student-header page-enter">
+    <h1>课程中心</h1>
+    <div>
+      <span id="userName" style="margin-right:12px;color:var(--text-secondary);"></span>
+      <a href="index.html" class="btn btn-ghost" id="logoutBtn" role="button">退出</a>
+    </div>
+  </header>
+  <main class="student-main page-enter">
+    <section>
+      <h2 class="section-title">可选课程</h2>
+      <div class="search-bar">
+        <input type="text" id="keyword" placeholder="搜索课程名称或代码" />
+        <button type="button" class="btn btn-primary" id="searchBtn">搜索</button>
+      </div>
+      <div id="courseList" class="course-grid">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    </section>
+    <section style="margin-top:48px;">
+      <h2 class="section-title">我的选课</h2>
+      <div id="myCourses" class="course-grid">
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+  <!-- 退课确认弹框（非原生） -->
+  <div id="confirmOverlay" class="modal-overlay confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <div class="modal modal-confirm">
+      <h2 id="confirmTitle" class="confirm-title">确认</h2>
+      <p id="confirmMessage" class="confirm-message"></p>
+      <div class="modal-actions confirm-actions">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/student.js"></script>
+</body>
+</html>

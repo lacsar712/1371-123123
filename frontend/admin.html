@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>学生选课系统 - 管理端</title>
+  <link rel="stylesheet" href="css/style.css?v=20260211">
+</head>
+<body>
+  <div class="bg-mesh" aria-hidden="true"></div>
+  <div class="admin-layout page-enter">
+    <aside class="admin-sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon" aria-hidden="true">◇</span>
+        <span class="brand-text">选课管理</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="active" data-page="courses">
+          <span class="nav-icon" aria-hidden="true">📋</span>
+          <span>课程管理</span>
+        </a>
+      </nav>
+    </aside>
+    <div class="admin-main">
+      <header class="admin-header">
+        <div class="header-inner">
+          <h1>课程管理</h1>
+          <p class="header-subtitle">管理课程信息与容量</p>
+        </div>
+        <a href="index.html" class="btn btn-ghost btn-sm" id="logoutBtn" role="button">退出登录</a>
+      </header>
+      <div class="admin-content">
+        <section class="content-toolbar">
+          <h2 class="toolbar-title">课程列表</h2>
+          <div class="toolbar-actions">
+            <button type="button" class="btn btn-primary" id="addCourseBtn">＋ 新增课程</button>
+          </div>
+        </section>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>课程代码</th>
+              <th>课程名称</th>
+              <th>学分</th>
+              <th>容量</th>
+              <th>已选</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="courseTableBody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">新增课程</h2>
+      <form id="courseForm">
+        <input type="hidden" id="courseId" name="id" />
+        <div class="form-group">
+          <label for="code">课程代码</label>
+          <input type="text" id="code" name="code" required />
+        </div>
+        <div class="form-group">
+          <label for="name">课程名称</label>
+          <input type="text" id="name" name="name" required />
+        </div>
+        <div class="form-group">
+          <label for="credit">学分</label>
+          <input type="number" id="credit" name="credit" min="0" required />
+        </div>
+        <div class="form-group">
+          <label for="capacity">容量</label>
+          <input type="number" id="capacity" name="capacity" min="0" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="modalCancel">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+  <script src="js/admin.js"></script>
+</body>
+</html>

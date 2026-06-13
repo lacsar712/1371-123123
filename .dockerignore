@@ -1,0 +1,12 @@
+node_modules
+.git
+*.log
+.env
+.idea
+.vscode
+dist
+build
+backend/data
+*.db
+trae
+prompts.md

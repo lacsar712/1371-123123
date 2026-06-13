@@ -1,0 +1,15 @@
+node_modules/
+backend/node_modules/
+backend/data/
+*.db
+__pycache__/
+.venv/
+.env
+.DS_Store
+dist/
+build/
+.idea/
+.vscode/
+*.log
+trae/
+prompts.md

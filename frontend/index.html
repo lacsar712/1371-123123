@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生选课系统 - 登录</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg-mesh"></div>
+  <div class="login-wrap page-enter">
+    <main class="login-card">
+      <h1>学生选课系统</h1>
+      <p class="subtitle">使用学号或账号登录后进入对应门户</p>
+
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <input
+            id="username"
+            type="text"
+            name="username"
+            required
+            autocomplete="username"
+            placeholder=" "
+          />
+          <label for="username">用户名 / 学号</label>
+        </div>
+
+        <div class="form-group">
+          <input
+            id="password"
+            type="password"
+            name="password"
+            required
+            autocomplete="current-password"
+            placeholder=" "
+          />
+          <label for="password">密码</label>
+        </div>
+
+        <div class="form-group">
+          <select id="role" name="role" required>
+            <option value="" disabled selected>请选择登录角色</option>
+            <option value="student">学生</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+
+        <button id="submitBtn" type="submit" class="btn btn-primary">
+          登录
+        </button>
+      </form>
+
+      <p style="margin-top:16px;font-size:0.875rem;color:var(--text-secondary);">
+        测试账号：管理员 <code>admin / 123456</code>，
+        学生 <code>S2024001 / 123456</code>
+      </p>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+  <script src="js/auth.js"></script>
+</body>
+</html>
