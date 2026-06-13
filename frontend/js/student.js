@@ -1149,5 +1149,280 @@
   `;
   document.head.appendChild(style);
 
-  init();
+  let calendarInstance = null;
+  let editingEvent = null;
+  const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#ef4444', '#ec4899', '#f97316'];
+
+  function showCalendarPage() {
+    document.querySelector('main.student-main').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'none';
+    document.getElementById('ticketDetailPage').style.display = 'none';
+    const calPage = document.getElementById('calendarPage');
+    calPage.style.display = 'block';
+    if (!calendarInstance) {
+      calendarInstance = new Calendar('#calendarContainer', {
+        view: 'month',
+        currentDate: new Date(),
+        events: [],
+        canCreateCustom: true,
+        onCellClick: onCalendarCellClick,
+        onEventClick: onCalendarEventClick,
+        onDateChange: () => loadCalendarEvents(),
+        onViewChange: () => loadCalendarEvents(),
+      });
+    } else {
+      calendarInstance.setDate(new Date());
+    }
+    loadCalendarEvents();
+  }
+
+  function hideCalendarPage() {
+    document.getElementById('calendarPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadCalendarEvents() {
+    if (!calendarInstance || !user) return;
+    const { start, end } = calendarInstance.getViewRange();
+    const params = new URLSearchParams({
+      userId: user.id,
+      userRole: user.role,
+      start: start.toISOString(),
+      end: end.toISOString(),
+    });
+    try {
+      const { data } = await api('/api/calendar/events?' + params.toString());
+      if (data && data.ok && Array.isArray(data.data)) {
+        calendarInstance.setEvents(data.data);
+      }
+    } catch (e) {
+      showToast('加载日程失败', 'error');
+    }
+  }
+
+  function onCalendarCellClick(defaultStart) {
+    openEventModal(null, defaultStart);
+  }
+
+  function onCalendarEventClick(event, el) {
+    if (event.category === 'custom') {
+      openEventModal(event, null);
+    } else {
+      openEventViewModal(event);
+    }
+  }
+
+  function renderColorSwatches(selectedColor) {
+    const container = document.getElementById('colorSwatches');
+    if (!container) return;
+    const active = selectedColor || EVENT_COLORS[0];
+    container.innerHTML = EVENT_COLORS.map((c) => `
+      <button type="button" class="color-swatch ${c.toLowerCase() === active.toLowerCase() ? 'active' : ''}"
+              data-color="${c}" style="background:${c};color:${c};" aria-label="颜色 ${c}"></button>
+    `).join('');
+    container.querySelectorAll('.color-swatch').forEach((sw) => {
+      sw.addEventListener('click', () => {
+        container.querySelectorAll('.color-swatch').forEach((s) => s.classList.remove('active'));
+        sw.classList.add('active');
+      });
+    });
+  }
+
+  function getSelectedColor() {
+    const active = document.querySelector('#colorSwatches .color-swatch.active');
+    return active ? active.dataset.color : EVENT_COLORS[0];
+  }
+
+  function openEventViewModal(event) {
+    editingEvent = null;
+    const modal = document.getElementById('eventModal');
+    document.getElementById('eventModalTitle').textContent = event.title || '事件详情';
+    const infoRow = document.getElementById('eventInfoRow');
+    infoRow.style.display = 'block';
+    const s = CalendarUtils.parseISODate(event.startTime);
+    const e = CalendarUtils.parseISODate(event.endTime);
+    const timeStr = s && e ? `${CalendarUtils.fmtDate(s)} ${CalendarUtils.formatTimeHM(s)} - ${CalendarUtils.formatTimeHM(e)}` : '';
+    const cat = event.category || 'custom';
+    infoRow.innerHTML = `
+      <div class="event-info-row" style="margin-bottom:0;">
+        <span class="event-info-label cat-${cat}">${CalendarUtils.categoryLabel(cat)}</span>
+        <span class="event-info-time">${timeStr}</span>
+      </div>
+    `;
+    document.getElementById('eventTitleGroup').style.display = 'none';
+    document.getElementById('eventTimeGroup').style.display = 'none';
+    document.getElementById('eventColorGroup').style.display = 'none';
+    document.getElementById('eventDeleteBtn').style.display = 'none';
+    document.getElementById('eventSaveBtn').style.display = 'none';
+    document.getElementById('eventCancelBtn').textContent = '关闭';
+    modal.classList.add('show');
+  }
+
+  function openEventModal(event, defaultStart) {
+    editingEvent = event && event.category === 'custom' ? event : null;
+    const modal = document.getElementById('eventModal');
+    const infoRow = document.getElementById('eventInfoRow');
+    infoRow.style.display = 'none';
+    document.getElementById('eventTitleGroup').style.display = '';
+    document.getElementById('eventTimeGroup').style.display = '';
+    document.getElementById('eventColorGroup').style.display = '';
+    document.getElementById('eventSaveBtn').style.display = '';
+    document.getElementById('eventCancelBtn').textContent = '取消';
+
+    if (editingEvent) {
+      document.getElementById('eventModalTitle').textContent = '编辑事件';
+      document.getElementById('eventTitle').value = editingEvent.title || '';
+      const s = CalendarUtils.parseISODate(editingEvent.startTime);
+      const e = CalendarUtils.parseISODate(editingEvent.endTime);
+      document.getElementById('eventStart').value = s ? CalendarUtils.fmtDateTime(s) : '';
+      document.getElementById('eventEnd').value = e ? CalendarUtils.fmtDateTime(e) : '';
+      document.getElementById('eventDeleteBtn').style.display = '';
+      renderColorSwatches(editingEvent.color);
+    } else {
+      document.getElementById('eventModalTitle').textContent = '新建事件';
+      document.getElementById('eventTitle').value = '';
+      const start = defaultStart || new Date();
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      document.getElementById('eventStart').value = CalendarUtils.fmtDateTime(start);
+      document.getElementById('eventEnd').value = CalendarUtils.fmtDateTime(end);
+      document.getElementById('eventDeleteBtn').style.display = 'none';
+      renderColorSwatches(EVENT_COLORS[0]);
+    }
+
+    modal.classList.add('show');
+  }
+
+  function closeEventModal() {
+    const modal = document.getElementById('eventModal');
+    modal.classList.remove('show');
+    editingEvent = null;
+  }
+
+  async function saveEvent() {
+    const title = document.getElementById('eventTitle').value.trim();
+    const startStr = document.getElementById('eventStart').value;
+    const endStr = document.getElementById('eventEnd').value;
+    const color = getSelectedColor();
+
+    if (!title) {
+      showToast('请输入事件标题', 'error');
+      return;
+    }
+    if (!startStr || !endStr) {
+      showToast('请选择起止时间', 'error');
+      return;
+    }
+    const start = CalendarUtils.parseISODate(startStr);
+    const end = CalendarUtils.parseISODate(endStr);
+    if (!start || !end) {
+      showToast('时间格式无效', 'error');
+      return;
+    }
+    if (end <= start) {
+      showToast('结束时间必须晚于开始时间', 'error');
+      return;
+    }
+
+    const payload = {
+      userId: user.id,
+      userRole: user.role,
+      title,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      color,
+    };
+
+    const btn = document.getElementById('eventSaveBtn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+      let resp;
+      if (editingEvent) {
+        const idMatch = String(editingEvent.id).match(/^custom_(\d+)$/);
+        if (!idMatch) throw new Error('无效的事件 ID');
+        resp = await api('/api/calendar/events/' + idMatch[1], {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        resp = await api('/api/calendar/events', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      const { data } = resp;
+      if (data && data.ok) {
+        showToast(editingEvent ? '已更新' : '已创建', 'success');
+        closeEventModal();
+        loadCalendarEvents();
+      } else {
+        showToast((data && data.message) || '保存失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '保存';
+    }
+  }
+
+  async function deleteEvent() {
+    if (!editingEvent) return;
+    const idMatch = String(editingEvent.id).match(/^custom_(\d+)$/);
+    if (!idMatch) {
+      showToast('该事件无法删除', 'error');
+      return;
+    }
+    const ok = await showConfirm('确定删除该事件？', '删除确认');
+    if (!ok) return;
+    const btn = document.getElementById('eventDeleteBtn');
+    btn.disabled = true;
+    btn.textContent = '删除中...';
+    try {
+      const { data } = await api('/api/calendar/events/' + idMatch[1], {
+        method: 'DELETE',
+        body: JSON.stringify({ userId: user.id, userRole: user.role }),
+      });
+      if (data && data.ok) {
+        showToast('已删除', 'success');
+        closeEventModal();
+        loadCalendarEvents();
+      } else {
+        showToast((data && data.message) || '删除失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '删除';
+    }
+  }
+
+  const _origInit = init;
+  function initWithCalendar() {
+    init();
+
+    document.getElementById('calendarBtn').addEventListener('click', showCalendarPage);
+    document.getElementById('calendarBackBtn').addEventListener('click', hideCalendarPage);
+    document.getElementById('eventCancelBtn').addEventListener('click', closeEventModal);
+    document.getElementById('eventSaveBtn').addEventListener('click', saveEvent);
+    document.getElementById('eventDeleteBtn').addEventListener('click', deleteEvent);
+    document.getElementById('eventModal').addEventListener('click', (e) => {
+      if (e.target.id === 'eventModal') closeEventModal();
+    });
+
+    const _origHideTicketPage = hideTicketPage;
+    window.hideTicketPage = function () {
+      document.getElementById('ticketPage').style.display = 'none';
+      const calPage = document.getElementById('calendarPage');
+      if (calPage && calPage.style.display === 'block') {
+        calPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+  }
+
+  initWithCalendar();
 })();

@@ -50,23 +50,58 @@ async function ensureTestAccounts() {
 async function seed() {
   await ensureTestAccounts();
   const courseCount = await Course.count();
-  if (courseCount > 0) {
-    logger.info('Seed already applied, skip');
-    return;
+  const schedulesCS101 = JSON.stringify([
+    { dayOfWeek: 1, startTime: '08:00', endTime: '09:40', startWeek: 1, endWeek: 16, location: 'A101' },
+    { dayOfWeek: 3, startTime: '10:00', endTime: '11:40', startWeek: 1, endWeek: 16, location: 'A101' },
+  ]);
+  const schedulesCS102 = JSON.stringify([
+    { dayOfWeek: 2, startTime: '14:00', endTime: '15:40', startWeek: 1, endWeek: 16, location: 'B202' },
+    { dayOfWeek: 4, startTime: '08:00', endTime: '09:40', startWeek: 1, endWeek: 16, location: 'B202' },
+  ]);
+  const schedulesCS103 = JSON.stringify([
+    { dayOfWeek: 2, startTime: '08:00', endTime: '09:40', startWeek: 1, endWeek: 16, location: 'C303' },
+    { dayOfWeek: 5, startTime: '10:00', endTime: '11:40', startWeek: 1, endWeek: 16, location: 'C303' },
+  ]);
+  const schedulesMATH201 = JSON.stringify([
+    { dayOfWeek: 1, startTime: '10:00', endTime: '11:40', startWeek: 1, endWeek: 18, location: 'D101' },
+    { dayOfWeek: 3, startTime: '14:00', endTime: '15:40', startWeek: 1, endWeek: 18, location: 'D101' },
+    { dayOfWeek: 5, startTime: '08:00', endTime: '09:40', startWeek: 1, endWeek: 18, location: 'D101' },
+  ]);
+  const schedulesENG101 = JSON.stringify([
+    { dayOfWeek: 4, startTime: '14:00', endTime: '15:40', startWeek: 1, endWeek: 16, location: 'E404' },
+  ]);
+  const courseData = [
+    { code: 'CS101', name: '数据结构', credit: 4, capacity: 60, schedules: schedulesCS101, examTime: '2026-06-16T09:00:00', examDuration: 120 },
+    { code: 'CS102', name: '计算机网络', credit: 3, capacity: 50, schedules: schedulesCS102, examTime: '2026-06-18T14:00:00', examDuration: 120 },
+    { code: 'CS103', name: '操作系统', credit: 4, capacity: 55, schedules: schedulesCS103, examTime: '2026-06-20T09:00:00', examDuration: 120 },
+    { code: 'MATH201', name: '高等数学', credit: 5, capacity: 80, schedules: schedulesMATH201, examTime: '2026-06-22T09:00:00', examDuration: 150 },
+    { code: 'ENG101', name: '大学英语', credit: 2, capacity: 100, schedules: schedulesENG101, examTime: '2026-06-24T14:00:00', examDuration: 120 },
+  ];
+
+  if (courseCount === 0) {
+    await Course.bulkCreate(courseData);
+    await Enrollment.bulkCreate([
+      { studentId: 1, courseId: 1 },
+      { studentId: 1, courseId: 2 },
+      { studentId: 2, courseId: 1 },
+    ]);
+    logger.info('Seed completed');
+  } else {
+    for (const cd of courseData) {
+      const existing = await Course.findOne({ where: { code: cd.code } });
+      if (existing) {
+        const patch = {};
+        if (!existing.schedules && cd.schedules) patch.schedules = cd.schedules;
+        if (!existing.examTime && cd.examTime) patch.examTime = cd.examTime;
+        if ((existing.examDuration || 0) < 1 && cd.examDuration) patch.examDuration = cd.examDuration;
+        if (Object.keys(patch).length > 0) {
+          await existing.update(patch);
+          logger.info(`Updated course schedule for ${cd.code}`);
+        }
+      }
+    }
+    logger.info('Seed patches applied');
   }
-  await Course.bulkCreate([
-    { code: 'CS101', name: '数据结构', credit: 4, capacity: 60 },
-    { code: 'CS102', name: '计算机网络', credit: 3, capacity: 50 },
-    { code: 'CS103', name: '操作系统', credit: 4, capacity: 55 },
-    { code: 'MATH201', name: '高等数学', credit: 5, capacity: 80 },
-    { code: 'ENG101', name: '大学英语', credit: 2, capacity: 100 },
-  ]);
-  await Enrollment.bulkCreate([
-    { studentId: 1, courseId: 1 },
-    { studentId: 1, courseId: 2 },
-    { studentId: 2, courseId: 1 },
-  ]);
-  logger.info('Seed completed');
 }
 
 module.exports = { seed, hashPassword };

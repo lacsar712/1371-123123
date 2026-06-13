@@ -29,8 +29,11 @@ const AttendanceRecord = require('./AttendanceRecord')(sequelize);
 const Ticket = require('./Ticket')(sequelize);
 const TicketReply = require('./TicketReply')(sequelize);
 const Notification = require('./Notification')(sequelize);
+const CalendarEvent = require('./CalendarEvent')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
+Student.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
+Teacher.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
 Enrollment.belongsTo(Student, { foreignKey: 'studentId' });
 Course.hasMany(Enrollment, { foreignKey: 'courseId' });
 Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
@@ -65,4 +68,5 @@ module.exports = {
   Ticket,
   TicketReply,
   Notification,
+  CalendarEvent,
 };

@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS course (
   credit INTEGER NOT NULL DEFAULT 0,
   capacity INTEGER NOT NULL DEFAULT 0,
   lottery_mode INTEGER NOT NULL DEFAULT 0,
+  schedules TEXT,
+  exam_time TEXT,
+  exam_duration INTEGER NOT NULL DEFAULT 120,
   created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -87,3 +90,18 @@ CREATE TABLE IF NOT EXISTS lottery_entry (
 
 CREATE INDEX IF NOT EXISTS idx_lottery_entry_student ON lottery_entry(student_id);
 CREATE INDEX IF NOT EXISTS idx_lottery_entry_course ON lottery_entry(course_id);
+
+CREATE TABLE IF NOT EXISTS calendar_event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  user_role TEXT(16) NOT NULL,
+  title TEXT(200) NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  color TEXT(16) NOT NULL DEFAULT '#6366f1',
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_event_user ON calendar_event(user_id, user_role);
+CREATE INDEX IF NOT EXISTS idx_calendar_event_time ON calendar_event(start_time, end_time);

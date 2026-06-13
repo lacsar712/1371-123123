@@ -961,5 +961,147 @@
   `;
   document.head.appendChild(style);
 
-  init();
+  let calendarInstance = null;
+
+  function showCalendarPage() {
+    document.querySelector('main.student-main').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'none';
+    document.getElementById('ticketDetailPage').style.display = 'none';
+    const calPage = document.getElementById('calendarPage');
+    calPage.style.display = 'block';
+    if (!calendarInstance) {
+      calendarInstance = new Calendar('#calendarContainer', {
+        view: 'month',
+        currentDate: new Date(),
+        events: [],
+        canCreateCustom: false,
+        onEventClick: onCalendarEventClick,
+        onDateChange: () => loadCalendarEvents(),
+        onViewChange: () => loadCalendarEvents(),
+      });
+    } else {
+      calendarInstance.setDate(new Date());
+    }
+    loadCalendarEvents();
+  }
+
+  function hideCalendarPage() {
+    document.getElementById('calendarPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadCalendarEvents() {
+    if (!calendarInstance || !user) return;
+    const { start, end } = calendarInstance.getViewRange();
+    const params = new URLSearchParams({
+      userId: user.id,
+      userRole: user.role,
+      start: start.toISOString(),
+      end: end.toISOString(),
+    });
+    try {
+      const { data } = await api('/api/calendar/events?' + params.toString());
+      if (data && data.ok && Array.isArray(data.data)) {
+        calendarInstance.setEvents(data.data);
+      }
+    } catch (e) {
+      showToast('加载日程失败', 'error');
+    }
+  }
+
+  function onCalendarEventClick(event) {
+    const modal = document.getElementById('eventModal');
+    document.getElementById('eventModalTitle').textContent = event.title || '事件详情';
+    const infoRow = document.getElementById('eventInfoRow');
+    infoRow.style.display = 'block';
+    const s = CalendarUtils.parseISODate(event.startTime);
+    const e = CalendarUtils.parseISODate(event.endTime);
+    const timeStr = s && e ? `${CalendarUtils.fmtDate(s)} ${CalendarUtils.formatTimeHM(s)} - ${CalendarUtils.formatTimeHM(e)}` : '';
+    const cat = event.category || 'custom';
+    let extraInfo = '';
+    if (event.courseCode) {
+      extraInfo += `<span style="margin-left:8px;color:var(--text-secondary);font-size:0.8125rem;">课程代码：${escapeHtml(event.courseCode)}</span>`;
+    }
+    if (event.location) {
+      extraInfo += `<span style="margin-left:8px;color:var(--text-secondary);font-size:0.8125rem;">📍 ${escapeHtml(event.location)}</span>`;
+    }
+    infoRow.innerHTML = `
+      <div class="event-info-row" style="margin-bottom:0;">
+        <span class="event-info-label cat-${cat}">${CalendarUtils.categoryLabel(cat)}</span>
+        <span class="event-info-time">${timeStr}</span>
+        ${extraInfo}
+      </div>
+    `;
+    const titleGroup = document.getElementById('eventTitleGroup');
+    const timeGroup = document.getElementById('eventTimeGroup');
+    const colorGroup = document.getElementById('eventColorGroup');
+    const titleInput = document.getElementById('eventTitle');
+    const startInput = document.getElementById('eventStart');
+    const endInput = document.getElementById('eventEnd');
+    titleGroup.style.display = '';
+    timeGroup.style.display = '';
+    colorGroup.style.display = 'none';
+    titleInput.value = event.title || '';
+    titleInput.readOnly = true;
+    titleInput.style.background = 'rgba(255,255,255,0.02)';
+    titleInput.style.color = 'var(--text-secondary)';
+    if (s) startInput.value = CalendarUtils.fmtDateTime(s);
+    if (e) endInput.value = CalendarUtils.fmtDateTime(e);
+    startInput.readOnly = true;
+    endInput.readOnly = true;
+    startInput.style.background = 'rgba(255,255,255,0.02)';
+    endInput.style.background = 'rgba(255,255,255,0.02)';
+    startInput.style.color = 'var(--text-secondary)';
+    endInput.style.color = 'var(--text-secondary)';
+    document.getElementById('eventCancelBtn').textContent = '关闭';
+    modal.classList.add('show');
+  }
+
+  function closeEventModal() {
+    const modal = document.getElementById('eventModal');
+    modal.classList.remove('show');
+    const titleInput = document.getElementById('eventTitle');
+    const startInput = document.getElementById('eventStart');
+    const endInput = document.getElementById('eventEnd');
+    if (titleInput) {
+      titleInput.readOnly = false;
+      titleInput.style.background = '';
+      titleInput.style.color = '';
+    }
+    if (startInput) {
+      startInput.readOnly = false;
+      startInput.style.background = '';
+      startInput.style.color = '';
+    }
+    if (endInput) {
+      endInput.readOnly = false;
+      endInput.style.background = '';
+      endInput.style.color = '';
+    }
+  }
+
+  const _origTeacherInit = init;
+  function teacherInitWithCalendar() {
+    init();
+
+    document.getElementById('calendarBtn').addEventListener('click', showCalendarPage);
+    document.getElementById('calendarBackBtn').addEventListener('click', hideCalendarPage);
+    document.getElementById('eventCancelBtn').addEventListener('click', closeEventModal);
+    document.getElementById('eventModal').addEventListener('click', (e) => {
+      if (e.target.id === 'eventModal') closeEventModal();
+    });
+
+    const _origHideTicketPage = hideTicketPage;
+    window.hideTicketPage = function () {
+      document.getElementById('ticketPage').style.display = 'none';
+      const calPage = document.getElementById('calendarPage');
+      if (calPage && calPage.style.display === 'block') {
+        calPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+  }
+
+  teacherInitWithCalendar();
 })();

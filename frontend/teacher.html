@@ -184,6 +184,9 @@
   <header class="student-header page-enter">
     <h1>考勤管理</h1>
     <div>
+      <button type="button" class="btn btn-ghost" id="calendarBtn" style="margin-right:12px;">
+        📅 校历
+      </button>
       <button type="button" class="btn btn-ghost" id="ticketBtn" style="margin-right:12px;position:relative;">
         📩 我的工单
         <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
@@ -258,6 +261,47 @@
     </section>
   </main>
 
+  <div id="calendarPage" class="calendar-page" style="display:none;">
+    <div class="ticket-header" style="max-width:1280px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="calendarBackBtn">← 返回</button>
+      <h2 style="margin:0;">校历与日程</h2>
+      <div></div>
+    </div>
+    <div id="calendarContainer" style="max-width:1280px;margin:0 auto;"></div>
+  </div>
+
+  <div id="eventModal" class="modal-overlay event-modal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 id="eventModalTitle">事件详情</h2>
+      <form id="eventForm">
+        <div id="eventInfoRow" style="display:none;padding:0 32px;"></div>
+        <div class="form-group" id="eventTitleGroup">
+          <label for="eventTitle">事件标题</label>
+          <input type="text" id="eventTitle" placeholder="请输入事件标题" maxlength="200" />
+        </div>
+        <div class="event-time-row" id="eventTimeGroup">
+          <div class="form-group">
+            <label for="eventStart">开始时间</label>
+            <input type="datetime-local" id="eventStart" />
+          </div>
+          <div class="form-group">
+            <label for="eventEnd">结束时间</label>
+            <input type="datetime-local" id="eventEnd" />
+          </div>
+        </div>
+        <div class="form-group" id="eventColorGroup">
+          <label>颜色</label>
+          <div class="color-picker-wrap">
+            <div class="color-swatches" id="colorSwatches"></div>
+          </div>
+        </div>
+      </form>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="eventCancelBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ticketPage" class="ticket-page" style="display:none;">
     <div class="ticket-header">
       <button type="button" class="btn btn-ghost" id="ticketBackBtn">← 返回</button>
@@ -319,6 +363,7 @@
   </div>
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+  <script src="js/calendar.js"></script>
   <script src="js/teacher.js"></script>
 </body>
 </html>
