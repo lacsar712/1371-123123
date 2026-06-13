@@ -184,6 +184,10 @@
   <header class="student-header page-enter">
     <h1>考勤管理</h1>
     <div>
+      <button type="button" class="btn btn-ghost" id="ticketBtn" style="margin-right:12px;position:relative;">
+        📩 我的工单
+        <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
+      </button>
       <span id="userName" style="margin-right:12px;color:var(--text-secondary);"></span>
       <a href="index.html" class="btn btn-ghost" id="logoutBtn" role="button">退出</a>
     </div>
@@ -253,6 +257,66 @@
       </div>
     </section>
   </main>
+
+  <div id="ticketPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header">
+      <button type="button" class="btn btn-ghost" id="ticketBackBtn">← 返回</button>
+      <h2 style="margin:0;">我的工单</h2>
+      <button type="button" class="btn btn-primary" id="newTicketBtn">＋ 提交工单</button>
+    </div>
+    <div class="ticket-tabs">
+      <button type="button" class="tab-btn active" data-status="">全部</button>
+      <button type="button" class="tab-btn" data-status="pending">待处理</button>
+      <button type="button" class="tab-btn" data-status="processing">处理中</button>
+      <button type="button" class="tab-btn" data-status="resolved">已解决</button>
+      <button type="button" class="tab-btn" data-status="closed">已关闭</button>
+    </div>
+    <div id="ticketList" class="ticket-list">
+      <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+    </div>
+    <div id="ticketPagination" class="ticket-pagination"></div>
+  </div>
+
+  <div id="ticketDetailPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header">
+      <button type="button" class="btn btn-ghost" id="ticketDetailBackBtn">← 返回列表</button>
+      <h2 style="margin:0;" id="detailTitle">工单详情</h2>
+    </div>
+    <div id="ticketDetailContent" class="ticket-detail">
+      <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+    </div>
+    <div id="ticketReplySection" class="ticket-reply-section" style="display:none;">
+      <textarea id="replyContent" placeholder="输入您的回复..." rows="3"></textarea>
+      <button type="button" class="btn btn-primary" id="submitReplyBtn">提交回复</button>
+    </div>
+  </div>
+
+  <div id="newTicketModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>提交新工单</h2>
+      <div class="form-group">
+        <label for="ticketCategory">问题分类</label>
+        <select id="ticketCategory">
+          <option value="course_enrollment">选课问题</option>
+          <option value="grade_appeal">成绩异议</option>
+          <option value="system_fault">系统故障</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ticketTitle">标题</label>
+        <input type="text" id="ticketTitle" placeholder="请简要描述问题" maxlength="100" />
+      </div>
+      <div class="form-group">
+        <label for="ticketDesc">详细描述</label>
+        <textarea id="ticketDesc" placeholder="请详细描述您遇到的问题..." rows="5"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelTicketBtn">取消</button>
+        <button type="button" class="btn btn-primary" id="submitTicketBtn">提交</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
   <script src="js/teacher.js"></script>

@@ -369,6 +369,322 @@
     }
   }
 
+  let currentTicketPage = 1;
+  let currentTicketStatus = '';
+  let currentTicketId = null;
+  let notificationTimer = null;
+  let lastNotificationId = 0;
+
+  function showTicketPage() {
+    document.querySelector('main.student-main').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'block';
+    loadTicketList();
+  }
+
+  function hideTicketPage() {
+    document.getElementById('ticketPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  function showTicketDetailPage(ticketId) {
+    currentTicketId = ticketId;
+    document.getElementById('ticketPage').style.display = 'none';
+    document.getElementById('ticketDetailPage').style.display = 'block';
+    loadTicketDetail(ticketId);
+  }
+
+  function hideTicketDetailPage() {
+    document.getElementById('ticketDetailPage').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'block';
+    currentTicketId = null;
+  }
+
+  async function loadTicketList() {
+    const container = document.getElementById('ticketList');
+    const params = new URLSearchParams({
+      submitterId: user.id,
+      page: currentTicketPage,
+      pageSize: 10,
+    });
+    if (currentTicketStatus) params.append('status', currentTicketStatus);
+
+    const { data } = await api('/api/tickets?' + params.toString());
+    if (data && data.ok && data.data) {
+      const { list, total, totalPages } = data.data;
+      if (!list.length) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">暂无工单</div>';
+      } else {
+        container.innerHTML = list.map((t) => `
+          <div class="ticket-card" data-id="${t.id}">
+            <div class="ticket-card-header">
+              <span class="ticket-category ticket-cat-${t.category}">${escapeHtml(t.categoryText || t.category)}</span>
+              <span class="ticket-status ticket-status-${t.status}">${escapeHtml(t.statusText || t.status)}</span>
+            </div>
+            <div class="ticket-card-title">${escapeHtml(t.title)}</div>
+            <div class="ticket-card-meta">
+              <span>创建时间：${formatDateTime(t.createdAt)}</span>
+              <span>最后回复：${formatDateTime(t.lastReplyAt)}</span>
+            </div>
+            ${t.handlerName ? `<div class="ticket-card-handler">处理人：${escapeHtml(t.handlerName)}</div>` : ''}
+          </div>
+        `).join('');
+
+        container.querySelectorAll('.ticket-card').forEach((card) => {
+          card.addEventListener('click', () => {
+            showTicketDetailPage(parseInt(card.dataset.id, 10));
+          });
+        });
+      }
+      renderPagination(total, totalPages);
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+    }
+  }
+
+  function renderPagination(total, totalPages) {
+    const container = document.getElementById('ticketPagination');
+    if (!container) return;
+    if (totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${currentTicketPage === 1 ? 'disabled' : ''} data-page="prev">上一页</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      html += `<button class="page-btn ${i === currentTicketPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="page-btn" ${currentTicketPage === totalPages ? 'disabled' : ''} data-page="next">下一页</button>`;
+    html += '</div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (page === 'prev' && currentTicketPage > 1) {
+          currentTicketPage--;
+        } else if (page === 'next' && currentTicketPage < totalPages) {
+          currentTicketPage++;
+        } else if (page !== 'prev' && page !== 'next') {
+          currentTicketPage = parseInt(page, 10);
+        }
+        loadTicketList();
+      });
+    });
+  }
+
+  async function loadTicketDetail(ticketId) {
+    const container = document.getElementById('ticketDetailContent');
+    const replySection = document.getElementById('ticketReplySection');
+    const { data } = await api('/api/tickets/' + ticketId);
+    if (data && data.ok && data.data) {
+      const ticket = data.data;
+      document.getElementById('detailTitle').textContent = ticket.title;
+
+      let html = `
+        <div class="ticket-detail-header">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <span class="ticket-category ticket-cat-${ticket.category}">${escapeHtml(ticket.categoryText || ticket.category)}</span>
+            <span class="ticket-status ticket-status-${ticket.status}">${escapeHtml(ticket.statusText || ticket.status)}</span>
+          </div>
+          <div class="ticket-detail-meta">
+            <span>提交人：${escapeHtml(ticket.submitterName)}</span>
+            <span>提交时间：${formatDateTime(ticket.createdAt)}</span>
+            ${ticket.handlerName ? `<span>处理人：${escapeHtml(ticket.handlerName)}</span>` : ''}
+          </div>
+        </div>
+        <div class="ticket-detail-body">
+          <div class="ticket-description">
+            <h4>问题描述</h4>
+            <p>${escapeHtml(ticket.description).replace(/\n/g, '<br>')}</p>
+          </div>
+      `;
+
+      if (ticket.replies && ticket.replies.length) {
+        html += '<div class="ticket-replies"><h4>回复记录</h4>';
+        ticket.replies.forEach((reply) => {
+          const isAdmin = reply.replyerRole === 'admin';
+          html += `
+            <div class="ticket-reply ${isAdmin ? 'reply-admin' : 'reply-user'}">
+              <div class="reply-header">
+                <span class="replyer-name">${escapeHtml(reply.replyerName)}</span>
+                <span class="reply-time">${formatDateTime(reply.createdAt)}</span>
+              </div>
+              <div class="reply-content">${escapeHtml(reply.content).replace(/\n/g, '<br>')}</div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
+
+      if (ticket.status !== 'closed') {
+        replySection.style.display = 'block';
+      } else {
+        replySection.style.display = 'none';
+      }
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+    }
+  }
+
+  function openNewTicketModal() {
+    document.getElementById('ticketTitle').value = '';
+    document.getElementById('ticketDesc').value = '';
+    document.getElementById('ticketCategory').value = 'course_enrollment';
+    document.getElementById('newTicketModal').classList.add('show');
+  }
+
+  function closeNewTicketModal() {
+    document.getElementById('newTicketModal').classList.remove('show');
+  }
+
+  async function submitTicket() {
+    const title = document.getElementById('ticketTitle').value.trim();
+    const description = document.getElementById('ticketDesc').value.trim();
+    const category = document.getElementById('ticketCategory').value;
+
+    if (!title) {
+      showToast('请输入标题', 'error');
+      return;
+    }
+    if (!description) {
+      showToast('请输入详细描述', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('submitTicketBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+
+    try {
+      const { data } = await api('/api/tickets', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          description,
+          category,
+          submitterId: user.id,
+          submitterRole: 'student',
+          submitterName: user.name,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('工单提交成功', 'success');
+        closeNewTicketModal();
+        loadTicketList();
+      } else {
+        showToast((data && data.message) || '提交失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '提交';
+    }
+  }
+
+  async function submitReply() {
+    const content = document.getElementById('replyContent').value.trim();
+    if (!content) {
+      showToast('请输入回复内容', 'error');
+      return;
+    }
+    if (!currentTicketId) return;
+
+    const btn = document.getElementById('submitReplyBtn');
+    btn.disabled = true;
+    btn.textContent = '发送中...';
+
+    try {
+      const { data } = await api(`/api/tickets/${currentTicketId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content,
+          replyerId: user.id,
+          replyerRole: 'student',
+          replyerName: user.name,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('回复成功', 'success');
+        document.getElementById('replyContent').value = '';
+        loadTicketDetail(currentTicketId);
+      } else {
+        showToast((data && data.message) || '回复失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '提交回复';
+    }
+  }
+
+  async function checkNotifications() {
+    if (!user) return;
+    const params = new URLSearchParams({
+      userId: user.id,
+      userRole: 'student',
+    });
+    const { data } = await api('/api/notifications/unread-count?' + params.toString());
+    if (data && data.ok && data.data) {
+      const { unreadCount, latest } = data.data;
+      const badge = document.getElementById('ticketBadge');
+      if (badge) {
+        badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
+      }
+
+      if (latest && latest.length) {
+        latest.forEach((n) => {
+          if (n.id > lastNotificationId) {
+            showFloatingNotification(n);
+          }
+        });
+        const maxId = Math.max(...latest.map((n) => n.id));
+        if (maxId > lastNotificationId) {
+          lastNotificationId = maxId;
+        }
+      }
+    }
+  }
+
+  function showFloatingNotification(notification) {
+    const el = document.createElement('div');
+    el.className = 'floating-notification';
+    el.innerHTML = `
+      <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
+      <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+    `;
+    document.body.appendChild(el);
+
+    setTimeout(() => el.classList.add('show'), 10);
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+    }, 5000);
+
+    el.addEventListener('click', () => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+      if (notification.ticketId) {
+        showTicketPage();
+        showTicketDetailPage(notification.ticketId);
+      }
+    });
+
+    markNotificationRead(notification.id);
+  }
+
+  async function markNotificationRead(id) {
+    try {
+      await api('/api/notifications/' + id + '/read', { method: 'PUT' });
+    } catch (e) {}
+  }
+
   function init() {
     user = getStoredUser();
     if (!user) {
@@ -379,6 +695,7 @@
 
     document.getElementById('logoutBtn').addEventListener('click', (e) => {
       sessionStorage.removeItem('user');
+      if (notificationTimer) clearInterval(notificationTimer);
       if (navigator.sendBeacon) {
         navigator.sendBeacon(API_BASE + '/api/auth/logout', '');
       } else {
@@ -398,7 +715,32 @@
       if (e.key === 'Enter') signIn();
     });
 
+    document.getElementById('ticketBtn').addEventListener('click', showTicketPage);
+    document.getElementById('ticketBackBtn').addEventListener('click', hideTicketPage);
+    document.getElementById('ticketDetailBackBtn').addEventListener('click', hideTicketDetailPage);
+    document.getElementById('newTicketBtn').addEventListener('click', openNewTicketModal);
+    document.getElementById('cancelTicketBtn').addEventListener('click', closeNewTicketModal);
+    document.getElementById('submitTicketBtn').addEventListener('click', submitTicket);
+    document.getElementById('submitReplyBtn').addEventListener('click', submitReply);
+
+    document.getElementById('newTicketModal').addEventListener('click', (e) => {
+      if (e.target.id === 'newTicketModal') closeNewTicketModal();
+    });
+
+    document.querySelectorAll('.ticket-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.ticket-tabs .tab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTicketStatus = btn.dataset.status || '';
+        currentTicketPage = 1;
+        loadTicketList();
+      });
+    });
+
     Promise.all([loadCourses(), loadMyCourses(), loadMyLottery(), loadAttendanceRecords()]);
+
+    checkNotifications();
+    notificationTimer = setInterval(checkNotifications, 30000);
   }
 
   const style = document.createElement('style');
@@ -460,6 +802,349 @@
       background: rgba(239, 68, 68, 0.12);
       color: #ef4444;
       border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .badge-dot {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .ticket-page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .ticket-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .ticket-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 9999px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--text-primary);
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+      color: #fff;
+      border-color: var(--accent-start);
+    }
+    .ticket-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .ticket-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .ticket-card:hover {
+      border-color: var(--accent-start);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+    }
+    .ticket-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+    .ticket-category {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .ticket-cat-course_enrollment {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+    .ticket-cat-grade_appeal {
+      background: rgba(249, 115, 22, 0.15);
+      color: #fb923c;
+    }
+    .ticket-cat-system_fault {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+    .ticket-cat-other {
+      background: rgba(161, 161, 170, 0.15);
+      color: #a1a1aa;
+    }
+    .ticket-status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .ticket-status-pending {
+      background: rgba(234, 179, 8, 0.15);
+      color: #eab308;
+    }
+    .ticket-status-processing {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+    .ticket-status-resolved {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .ticket-status-closed {
+      background: rgba(161, 161, 170, 0.15);
+      color: #a1a1aa;
+    }
+    .ticket-card-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .ticket-card-meta {
+      display: flex;
+      gap: 24px;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      flex-wrap: wrap;
+    }
+    .ticket-card-handler {
+      margin-top: 8px;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+    .ticket-pagination {
+      margin-top: 24px;
+      text-align: center;
+    }
+    .pagination {
+      display: inline-flex;
+      gap: 8px;
+    }
+    .page-btn {
+      min-width: 36px;
+      height: 36px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .page-btn:hover:not(:disabled) {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--text-primary);
+    }
+    .page-btn.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border-color: transparent;
+    }
+    .page-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .ticket-detail {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .ticket-detail-header {
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--bg-glass-border);
+      margin-bottom: 20px;
+    }
+    .ticket-detail-meta {
+      margin-top: 12px;
+      display: flex;
+      gap: 24px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      flex-wrap: wrap;
+    }
+    .ticket-detail-body h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+    .ticket-description p {
+      color: var(--text-primary);
+      line-height: 1.7;
+      margin: 0;
+    }
+    .ticket-replies {
+      margin-top: 24px;
+    }
+    .ticket-reply {
+      margin-bottom: 16px;
+      padding: 16px;
+      border-radius: 12px;
+    }
+    .reply-user {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.15);
+    }
+    .reply-admin {
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.15);
+    }
+    .reply-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .replyer-name {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+    }
+    .reply-time {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+    .reply-content {
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+    .ticket-reply-section {
+      margin-top: 24px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .ticket-reply-section textarea {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+      resize: vertical;
+      min-height: 80px;
+      margin-bottom: 12px;
+      font-family: inherit;
+    }
+    .ticket-reply-section textarea:focus {
+      outline: none;
+      border-color: var(--accent-start);
+    }
+    .floating-notification {
+      position: fixed;
+      top: 80px;
+      right: 24px;
+      max-width: 360px;
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      border-radius: 12px;
+      padding: 16px 20px;
+      color: #fff;
+      cursor: pointer;
+      z-index: 9999;
+      transform: translateX(calc(100% + 40px));
+      transition: transform 0.3s ease;
+      box-shadow: 0 12px 40px rgba(99, 102, 241, 0.3);
+    }
+    .floating-notification.show {
+      transform: translateX(0);
+    }
+    .floating-notification-title {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      margin-bottom: 4px;
+    }
+    .floating-notification-content {
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.5;
+    }
+    .notification-panel {
+      position: fixed;
+      top: 70px;
+      right: 24px;
+      width: 360px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      z-index: 1000;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .notification-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--bg-glass-border);
+      font-weight: 600;
+    }
+    .notification-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .notification-item {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--bg-glass-border);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .notification-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+    }
+    .notification-item.unread {
+      background: rgba(99, 102, 241, 0.05);
+    }
+    .notification-item-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+    .notification-item-content {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .notification-item-time {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      margin-top: 6px;
     }
   `;
   document.head.appendChild(style);

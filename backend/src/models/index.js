@@ -26,6 +26,9 @@ const Enrollment = require('./Enrollment')(sequelize);
 const LotteryEntry = require('./LotteryEntry')(sequelize);
 const AttendanceSession = require('./AttendanceSession')(sequelize);
 const AttendanceRecord = require('./AttendanceRecord')(sequelize);
+const Ticket = require('./Ticket')(sequelize);
+const TicketReply = require('./TicketReply')(sequelize);
+const Notification = require('./Notification')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Enrollment.belongsTo(Student, { foreignKey: 'studentId' });
@@ -46,6 +49,9 @@ AttendanceRecord.belongsTo(AttendanceSession, { foreignKey: 'sessionId' });
 Student.hasMany(AttendanceRecord, { foreignKey: 'studentId' });
 AttendanceRecord.belongsTo(Student, { foreignKey: 'studentId' });
 
+Ticket.hasMany(TicketReply, { foreignKey: 'ticketId', as: 'replies' });
+TicketReply.belongsTo(Ticket, { foreignKey: 'ticketId' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -56,4 +62,7 @@ module.exports = {
   LotteryEntry,
   AttendanceSession,
   AttendanceRecord,
+  Ticket,
+  TicketReply,
+  Notification,
 };

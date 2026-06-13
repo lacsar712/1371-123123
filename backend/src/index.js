@@ -20,6 +20,8 @@ const coursesRouter = require('./routes/courses');
 const enrollmentRouter = require('./routes/enrollment');
 const adminRouter = require('./routes/admin');
 const attendanceRouter = require('./routes/attendance');
+const ticketsRouter = require('./routes/tickets');
+const notificationsRouter = require('./routes/notifications');
 const seed = require('./seed').seed;
 
 const PORT = parseInt(process.env.PORT || '8137', 10);
@@ -33,6 +35,10 @@ app.use('/api/courses', coursesRouter);
 app.use('/api/students', enrollmentRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/attendance', attendanceRouter);
+app.use('/api/tickets', ticketsRouter);
+app.use('/api/notifications', notificationsRouter);
+
+app.use(express.static(path.join(__dirname, '..', '..', 'frontend')));
 
 app.use((err, req, res, next) => {
   logger.error('Unhandled error', { error: err.message });

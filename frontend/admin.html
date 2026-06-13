@@ -28,6 +28,11 @@
           <span class="nav-icon" aria-hidden="true">📊</span>
           <span>考勤历史</span>
         </a>
+        <a href="#" data-page="tickets">
+          <span class="nav-icon" aria-hidden="true">📩</span>
+          <span>工单中心</span>
+          <span id="ticketBadge" class="badge-dot-nav" style="display:none;"></span>
+        </a>
       </nav>
     </aside>
     <div class="admin-main">
@@ -145,6 +150,75 @@
               </thead>
               <tbody id="attendanceDetailBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <div id="page-tickets" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title">工单中心</h2>
+            <div class="toolbar-actions">
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                <select id="ticketStatusFilter" style="height:40px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;cursor:pointer;appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:44px;min-width:140px;">
+                  <option value="">全部状态</option>
+                  <option value="pending">待处理</option>
+                  <option value="processing">处理中</option>
+                  <option value="resolved">已解决</option>
+                  <option value="closed">已关闭</option>
+                </select>
+                <select id="ticketCategoryFilter" style="height:40px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;cursor:pointer;appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:44px;min-width:140px;">
+                  <option value="">全部分类</option>
+                  <option value="course_enrollment">选课问题</option>
+                  <option value="grade_appeal">成绩异议</option>
+                  <option value="system_fault">系统故障</option>
+                  <option value="other">其他</option>
+                </select>
+                <button type="button" class="btn btn-primary" id="batchAssignBtn" disabled>批量分配</button>
+              </div>
+            </div>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:40px;"><input type="checkbox" id="selectAllTickets" /></th>
+                  <th>ID</th>
+                  <th>标题</th>
+                  <th>分类</th>
+                  <th>状态</th>
+                  <th>提交人</th>
+                  <th>处理人</th>
+                  <th>创建时间</th>
+                  <th>最后回复</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="ticketTableBody">
+                <tr><td colspan="10" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="ticketPagination" style="margin-top:24px;text-align:center;"></div>
+        </div>
+
+        <div id="page-ticket-detail" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title" id="ticketDetailTitle">工单详情</h2>
+            <div class="toolbar-actions">
+              <button type="button" class="btn btn-ghost" id="backToTicketList">← 返回列表</button>
+              <select id="ticketStatusChange" style="height:40px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;cursor:pointer;appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:44px;">
+                <option value="pending">待处理</option>
+                <option value="processing">处理中</option>
+                <option value="resolved">已解决</option>
+                <option value="closed">已关闭</option>
+              </select>
+            </div>
+          </section>
+          <div id="ticketDetailContent">
+            <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+          </div>
+          <div class="ticket-reply-section-admin" style="margin-top:24px;background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--bg-glass-border);border-radius:var(--radius);padding:20px;">
+            <textarea id="adminReplyContent" placeholder="输入您的回复..." rows="3" style="width:100%;padding:12px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;resize:vertical;min-height:80px;margin-bottom:12px;font-family:inherit;"></textarea>
+            <button type="button" class="btn btn-primary" id="adminSubmitReplyBtn">提交回复</button>
           </div>
         </div>
       </div>

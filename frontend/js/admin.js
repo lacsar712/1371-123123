@@ -62,6 +62,8 @@
     document.getElementById('page-lottery').style.display = page === 'lottery' ? 'block' : 'none';
     document.getElementById('page-attendance').style.display = page === 'attendance' ? 'block' : 'none';
     document.getElementById('page-attendance-detail').style.display = page === 'attendance-detail' ? 'block' : 'none';
+    document.getElementById('page-tickets').style.display = page === 'tickets' ? 'block' : 'none';
+    document.getElementById('page-ticket-detail').style.display = page === 'ticket-detail' ? 'block' : 'none';
 
     const headerTitle = document.querySelector('.admin-header h1');
     const headerSubtitle = document.querySelector('.admin-header .header-subtitle');
@@ -74,6 +76,9 @@
     } else if (page === 'attendance' || page === 'attendance-detail') {
       headerTitle.textContent = '考勤历史';
       headerSubtitle.textContent = '查看历次点名出勤情况';
+    } else if (page === 'tickets' || page === 'ticket-detail') {
+      headerTitle.textContent = '工单中心';
+      headerSubtitle.textContent = '处理学生与教师提交的问题反馈';
     }
 
     if (page === 'lottery') {
@@ -81,6 +86,9 @@
     }
     if (page === 'attendance') {
       loadAttendanceList();
+    }
+    if (page === 'tickets') {
+      loadTickets();
     }
   }
 
@@ -397,6 +405,325 @@
     }
   }
 
+  let ticketPage = 1;
+  let ticketPageSize = 10;
+  let currentTicketId = null;
+  let selectedTicketIds = new Set();
+  let notificationTimer = null;
+  let lastNotificationId = 0;
+
+  async function loadTickets() {
+    const tbody = document.getElementById('ticketTableBody');
+    const statusFilter = document.getElementById('ticketStatusFilter')?.value || '';
+    const categoryFilter = document.getElementById('ticketCategoryFilter')?.value || '';
+
+    const params = new URLSearchParams({
+      page: ticketPage,
+      pageSize: ticketPageSize,
+    });
+    if (statusFilter) params.append('status', statusFilter);
+    if (categoryFilter) params.append('category', categoryFilter);
+
+    const { data } = await api('/api/tickets?' + params.toString());
+    if (!data || !data.ok || !data.data) {
+      tbody.innerHTML =
+        '<tr><td colspan="10" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+
+    const { list, total, totalPages } = data.data;
+    if (!list.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);">暂无工单</td></tr>';
+    } else {
+      tbody.innerHTML = list
+        .map(
+          (t) => `
+        <tr>
+          <td><input type="checkbox" class="ticket-checkbox" data-id="${t.id}" ${selectedTicketIds.has(t.id) ? 'checked' : ''} /></td>
+          <td>${t.id}</td>
+          <td>${escapeHtml(t.title)}</td>
+          <td><span class="badge badge-cat-${t.category}">${escapeHtml(t.categoryText || t.category)}</span></td>
+          <td><span class="badge badge-status-${t.status}">${escapeHtml(t.statusText || t.status)}</span></td>
+          <td>${escapeHtml(t.submitterName)} <span style="color:var(--text-secondary);font-size:0.8125rem;">(${t.submitterRole})</span></td>
+          <td>${t.handlerName ? escapeHtml(t.handlerName) : '<span style="color:var(--text-secondary);">未分配</span>'}</td>
+          <td style="color:var(--text-secondary);font-size:0.875rem;">${formatDateTime(t.createdAt)}</td>
+          <td style="color:var(--text-secondary);font-size:0.875rem;">${formatDateTime(t.lastReplyAt)}</td>
+          <td>
+            <button type="button" class="btn btn-ghost btn-sm view-ticket-btn" data-id="${t.id}">查看详情</button>
+          </td>
+        </tr>`
+        )
+        .join('');
+
+      tbody.querySelectorAll('.view-ticket-btn').forEach((btn) => {
+        btn.addEventListener('click', () => viewTicketDetail(parseInt(btn.dataset.id, 10)));
+      });
+
+      tbody.querySelectorAll('.ticket-checkbox').forEach((cb) => {
+        cb.addEventListener('change', (e) => {
+          const id = parseInt(e.target.dataset.id, 10);
+          if (e.target.checked) {
+            selectedTicketIds.add(id);
+          } else {
+            selectedTicketIds.delete(id);
+          }
+          updateBatchAssignBtn();
+        });
+      });
+    }
+
+    renderTicketPagination(total, totalPages);
+    updateBatchAssignBtn();
+    document.getElementById('selectAllTickets').checked = false;
+  }
+
+  function updateBatchAssignBtn() {
+    const btn = document.getElementById('batchAssignBtn');
+    if (btn) {
+      btn.disabled = selectedTicketIds.size === 0;
+    }
+  }
+
+  function renderTicketPagination(total, totalPages) {
+    const container = document.getElementById('ticketPagination');
+    if (!container) return;
+    if (totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${ticketPage === 1 ? 'disabled' : ''} data-page="prev">上一页</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      html += `<button class="page-btn ${i === ticketPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="page-btn" ${ticketPage === totalPages ? 'disabled' : ''} data-page="next">下一页</button>`;
+    html += '</div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (page === 'prev' && ticketPage > 1) {
+          ticketPage--;
+        } else if (page === 'next' && ticketPage < totalPages) {
+          ticketPage++;
+        } else if (page !== 'prev' && page !== 'next') {
+          ticketPage = parseInt(page, 10);
+        }
+        loadTickets();
+      });
+    });
+  }
+
+  async function viewTicketDetail(ticketId) {
+    currentTicketId = ticketId;
+    const { data } = await api('/api/tickets/' + ticketId);
+    if (!data || !data.ok || !data.data) {
+      showToast('加载失败', 'error');
+      return;
+    }
+
+    const ticket = data.data;
+    document.getElementById('ticketDetailTitle').textContent = ticket.title;
+    document.getElementById('ticketStatusChange').value = ticket.status;
+
+    let html = `
+      <div class="ticket-detail-admin">
+        <div class="ticket-detail-header-admin">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <span class="badge badge-cat-${ticket.category}">${escapeHtml(ticket.categoryText || ticket.category)}</span>
+            <span class="badge badge-status-${ticket.status}">${escapeHtml(ticket.statusText || ticket.status)}</span>
+          </div>
+          <div class="ticket-detail-meta-admin">
+            <span>提交人：${escapeHtml(ticket.submitterName)} (${ticket.submitterRole})</span>
+            <span>提交时间：${formatDateTime(ticket.createdAt)}</span>
+            ${ticket.handlerName ? `<span>处理人：${escapeHtml(ticket.handlerName)}</span>` : ''}
+            <span>最后回复：${formatDateTime(ticket.lastReplyAt)}</span>
+          </div>
+        </div>
+        <div class="ticket-detail-body-admin">
+          <div class="ticket-description-admin">
+            <h4>问题描述</h4>
+            <p>${escapeHtml(ticket.description).replace(/\n/g, '<br>')}</p>
+          </div>
+    `;
+
+    if (ticket.replies && ticket.replies.length) {
+      html += '<div class="ticket-replies-admin"><h4>回复记录</h4>';
+      ticket.replies.forEach((reply) => {
+        const isAdmin = reply.replyerRole === 'admin';
+        html += `
+          <div class="ticket-reply-admin ${isAdmin ? 'reply-admin' : 'reply-user'}">
+            <div class="reply-header-admin">
+              <span class="replyer-name-admin">${escapeHtml(reply.replyerName)} ${isAdmin ? '(管理员)' : '(' + reply.replyerRole + ')'}</span>
+              <span class="reply-time-admin">${formatDateTime(reply.createdAt)}</span>
+            </div>
+            <div class="reply-content-admin">${escapeHtml(reply.content).replace(/\n/g, '<br>')}</div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+
+    html += '</div></div>';
+    document.getElementById('ticketDetailContent').innerHTML = html;
+
+    showPage('ticket-detail');
+  }
+
+  async function submitAdminReply() {
+    const content = document.getElementById('adminReplyContent').value.trim();
+    if (!content) {
+      showToast('请输入回复内容', 'error');
+      return;
+    }
+    if (!currentTicketId) return;
+
+    const btn = document.getElementById('adminSubmitReplyBtn');
+    btn.disabled = true;
+    btn.textContent = '发送中...';
+
+    try {
+      const { data } = await api(`/api/tickets/${currentTicketId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content,
+          replyerId: user.id,
+          replyerRole: 'admin',
+          replyerName: user.username,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('回复成功', 'success');
+        document.getElementById('adminReplyContent').value = '';
+        viewTicketDetail(currentTicketId);
+      } else {
+        showToast((data && data.message) || '回复失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '提交回复';
+    }
+  }
+
+  async function changeTicketStatus() {
+    const status = document.getElementById('ticketStatusChange').value;
+    if (!currentTicketId || !status) return;
+
+    try {
+      const { data } = await api(`/api/tickets/${currentTicketId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status,
+          operatorId: user.id,
+          operatorName: user.username,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('状态已更新', 'success');
+        viewTicketDetail(currentTicketId);
+      } else {
+        showToast((data && data.message) || '更新失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    }
+  }
+
+  async function batchAssign() {
+    if (selectedTicketIds.size === 0) return;
+
+    const handlerName = prompt('请输入处理人姓名：', user.username);
+    if (!handlerName || !handlerName.trim()) return;
+
+    try {
+      const { data } = await api('/api/tickets/batch-assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          ticketIds: Array.from(selectedTicketIds),
+          handlerId: user.id,
+          handlerName: handlerName.trim(),
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast(data.message || '分配成功', 'success');
+        selectedTicketIds.clear();
+        loadTickets();
+      } else {
+        showToast((data && data.message) || '分配失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    }
+  }
+
+  async function checkNotifications() {
+    if (!user) return;
+    const params = new URLSearchParams({
+      userId: user.id,
+      userRole: 'admin',
+    });
+    const { data } = await api('/api/notifications/unread-count?' + params.toString());
+    if (data && data.ok && data.data) {
+      const { unreadCount, latest } = data.data;
+      const badge = document.getElementById('ticketBadge');
+      if (badge) {
+        badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
+      }
+
+      if (latest && latest.length) {
+        latest.forEach((n) => {
+          if (n.id > lastNotificationId) {
+            showFloatingNotification(n);
+          }
+        });
+        const maxId = Math.max(...latest.map((n) => n.id));
+        if (maxId > lastNotificationId) {
+          lastNotificationId = maxId;
+        }
+      }
+    }
+  }
+
+  function showFloatingNotification(notification) {
+    const el = document.createElement('div');
+    el.className = 'floating-notification-admin';
+    el.innerHTML = `
+      <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
+      <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+    `;
+    document.body.appendChild(el);
+
+    setTimeout(() => el.classList.add('show'), 10);
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+    }, 5000);
+
+    el.addEventListener('click', () => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+      if (notification.ticketId) {
+        showPage('tickets');
+        viewTicketDetail(notification.ticketId);
+      }
+    });
+
+    markNotificationRead(notification.id);
+  }
+
+  async function markNotificationRead(id) {
+    try {
+      await api('/api/notifications/' + id + '/read', { method: 'PUT' });
+    } catch (e) {}
+  }
+
   function init() {
     user = getStoredUser();
     if (!user) {
@@ -430,7 +757,66 @@
     document.getElementById('backToAttendanceList').addEventListener('click', () => showPage('attendance'));
     document.getElementById('exportAbsentBtn').addEventListener('click', exportAbsent);
 
+    const ticketStatusFilter = document.getElementById('ticketStatusFilter');
+    if (ticketStatusFilter) {
+      ticketStatusFilter.addEventListener('change', () => {
+        ticketPage = 1;
+        loadTickets();
+      });
+    }
+    const ticketCategoryFilter = document.getElementById('ticketCategoryFilter');
+    if (ticketCategoryFilter) {
+      ticketCategoryFilter.addEventListener('change', () => {
+        ticketPage = 1;
+        loadTickets();
+      });
+    }
+
+    const selectAllCheckbox = document.getElementById('selectAllTickets');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', (e) => {
+        const checkboxes = document.querySelectorAll('.ticket-checkbox');
+        checkboxes.forEach((cb) => {
+          cb.checked = e.target.checked;
+          const id = parseInt(cb.dataset.id, 10);
+          if (e.target.checked) {
+            selectedTicketIds.add(id);
+          } else {
+            selectedTicketIds.delete(id);
+          }
+        });
+        updateBatchAssignBtn();
+      });
+    }
+
+    const batchAssignBtn = document.getElementById('batchAssignBtn');
+    if (batchAssignBtn) {
+      batchAssignBtn.addEventListener('click', batchAssign);
+    }
+
+    const backToTicketListBtn = document.getElementById('backToTicketList');
+    if (backToTicketListBtn) {
+      backToTicketListBtn.addEventListener('click', () => {
+        currentTicketId = null;
+        showPage('tickets');
+        loadTickets();
+      });
+    }
+
+    const ticketStatusChange = document.getElementById('ticketStatusChange');
+    if (ticketStatusChange) {
+      ticketStatusChange.addEventListener('change', changeTicketStatus);
+    }
+
+    const adminSubmitReplyBtn = document.getElementById('adminSubmitReplyBtn');
+    if (adminSubmitReplyBtn) {
+      adminSubmitReplyBtn.addEventListener('click', submitAdminReply);
+    }
+
     loadCourses();
+
+    checkNotifications();
+    notificationTimer = setInterval(checkNotifications, 30000);
   }
 
   const style = document.createElement('style');
@@ -495,6 +881,175 @@
       color: var(--text-secondary);
       font-size: 0.875rem;
       font-variant-numeric: tabular-nums;
+    }
+    .badge-dot-nav {
+      position: absolute;
+      top: 14px;
+      right: 20px;
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .sidebar-nav a {
+      position: relative;
+    }
+    .badge-cat-course_enrollment {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+    .badge-cat-grade_appeal {
+      background: rgba(249, 115, 22, 0.15);
+      color: #fb923c;
+    }
+    .badge-cat-system_fault {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+    .badge-cat-other {
+      background: rgba(161, 161, 170, 0.15);
+      color: #a1a1aa;
+    }
+    .badge-status-pending {
+      background: rgba(234, 179, 8, 0.15);
+      color: #eab308;
+    }
+    .badge-status-processing {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+    .badge-status-resolved {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .badge-status-closed {
+      background: rgba(161, 161, 170, 0.15);
+      color: #a1a1aa;
+    }
+    .pagination {
+      display: inline-flex;
+      gap: 8px;
+    }
+    .page-btn {
+      min-width: 36px;
+      height: 36px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .page-btn:hover:not(:disabled) {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--text-primary);
+    }
+    .page-btn.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border-color: transparent;
+    }
+    .page-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .ticket-detail-admin {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .ticket-detail-header-admin {
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--bg-glass-border);
+      margin-bottom: 20px;
+    }
+    .ticket-detail-meta-admin {
+      margin-top: 12px;
+      display: flex;
+      gap: 24px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      flex-wrap: wrap;
+    }
+    .ticket-detail-body-admin h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+    .ticket-description-admin p {
+      color: var(--text-primary);
+      line-height: 1.7;
+      margin: 0;
+    }
+    .ticket-replies-admin {
+      margin-top: 24px;
+    }
+    .ticket-reply-admin {
+      margin-bottom: 16px;
+      padding: 16px;
+      border-radius: 12px;
+    }
+    .ticket-reply-admin.reply-user {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.15);
+    }
+    .ticket-reply-admin.reply-admin {
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.15);
+    }
+    .reply-header-admin {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .replyer-name-admin {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+    }
+    .reply-time-admin {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+    .reply-content-admin {
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+    .floating-notification-admin {
+      position: fixed;
+      top: 80px;
+      right: 24px;
+      max-width: 360px;
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      border-radius: 12px;
+      padding: 16px 20px;
+      color: #fff;
+      cursor: pointer;
+      z-index: 9999;
+      transform: translateX(calc(100% + 40px));
+      transition: transform 0.3s ease;
+      box-shadow: 0 12px 40px rgba(99, 102, 241, 0.3);
+    }
+    .floating-notification-admin.show {
+      transform: translateX(0);
+    }
+    .floating-notification-admin .floating-notification-title {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      margin-bottom: 4px;
+    }
+    .floating-notification-admin .floating-notification-content {
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.5;
     }
   `;
   document.head.appendChild(style);
