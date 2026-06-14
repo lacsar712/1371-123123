@@ -35,8 +35,30 @@ CREATE TABLE IF NOT EXISTS course (
   schedules TEXT,
   exam_time TEXT,
   exam_duration INTEGER NOT NULL DEFAULT 120,
-  created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  teacher_id INTEGER,
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY (teacher_id) REFERENCES teacher(id)
 );
+CREATE INDEX IF NOT EXISTS idx_course_teacher ON course(teacher_id);
+
+CREATE TABLE IF NOT EXISTS exam (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id INTEGER NOT NULL,
+  teacher_id INTEGER NOT NULL,
+  exam_time TEXT NOT NULL,
+  duration INTEGER NOT NULL DEFAULT 120,
+  location TEXT NOT NULL DEFAULT '',
+  exam_type TEXT(16) NOT NULL DEFAULT 'closed',
+  paper_file TEXT,
+  paper_file_name TEXT,
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY (course_id) REFERENCES course(id),
+  FOREIGN KEY (teacher_id) REFERENCES teacher(id)
+);
+CREATE INDEX IF NOT EXISTS idx_exam_course ON exam(course_id);
+CREATE INDEX IF NOT EXISTS idx_exam_teacher ON exam(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_exam_time ON exam(exam_time);
 
 CREATE TABLE IF NOT EXISTS enrollment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -13,6 +13,7 @@ module.exports = (sequelize) => {
       schedules: { type: DataTypes.TEXT, allowNull: true, field: 'schedules' },
       examTime: { type: DataTypes.DATE, allowNull: true, field: 'exam_time' },
       examDuration: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 120, field: 'exam_duration' },
+      teacherId: { type: DataTypes.INTEGER, allowNull: true, field: 'teacher_id' },
     },
     { tableName: 'course' }
   );

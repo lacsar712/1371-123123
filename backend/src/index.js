@@ -4,7 +4,6 @@ const express = require('express');
 const cors = require('cors');
 const logger = require('./logger');
 
-// 确保 SQLite 数据目录存在
 const dataDir = path.resolve(
   __dirname,
   '..',
@@ -24,6 +23,7 @@ const ticketsRouter = require('./routes/tickets');
 const notificationsRouter = require('./routes/notifications');
 const calendarRouter = require('./routes/calendar');
 const badgesRouter = require('./routes/badges');
+const examsRouter = require('./routes/exams');
 const seed = require('./seed').seed;
 
 const PORT = parseInt(process.env.PORT || '8137', 10);
@@ -41,6 +41,7 @@ app.use('/api/tickets', ticketsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/badges', badgesRouter);
+app.use('/api/exams', examsRouter);
 
 app.use(express.static(path.join(__dirname, '..', '..', 'frontend')));
 

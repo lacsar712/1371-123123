@@ -1449,6 +1449,304 @@
     document.getElementById('ticketDetailPage').style.display = 'none';
     document.getElementById('calendarPage').style.display = 'none';
     document.getElementById('badgePage').style.display = 'none';
+    document.getElementById('examPage').style.display = 'none';
+    document.getElementById('gradePage').style.display = 'none';
+    if (examCountdownTimer) {
+      clearInterval(examCountdownTimer);
+      examCountdownTimer = null;
+    }
+  }
+
+  let examCountdownTimer = null;
+  let currentExams = [];
+
+  const EXAM_TYPE_LABELS = { closed: '闭卷', open: '开卷', computer: '机试' };
+  const EXAM_TYPE_COLORS = { closed: '#ef4444', open: '#10b981', computer: '#3b82f6' };
+
+  function showExamPage() {
+    hideAllPages();
+    document.getElementById('examPage').style.display = 'block';
+    loadStudentExamList();
+  }
+
+  function hideExamPage() {
+    document.getElementById('examPage').style.display = 'none';
+    if (examCountdownTimer) {
+      clearInterval(examCountdownTimer);
+      examCountdownTimer = null;
+    }
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadStudentExamList() {
+    const container = document.getElementById('examList');
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>';
+    try {
+      const { data } = await api(`/api/exams/student/${user.id}`);
+      if (data && data.ok && Array.isArray(data.data)) {
+        currentExams = data.data;
+        renderExamList();
+        startExamCountdown();
+      } else {
+        container.innerHTML = `<div style="text-align:center;color:var(--danger);padding:48px;">${(data && data.message) || '加载失败'}</div>`;
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">网络错误</div>';
+    }
+  }
+
+  function renderExamList() {
+    const container = document.getElementById('examList');
+    if (!currentExams.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">暂无考试安排</div>';
+      return;
+    }
+    container.innerHTML =
+      '<div class="exam-student-list">' +
+      currentExams
+        .map((exam, idx) => {
+          const now = new Date();
+          const examTime = new Date(exam.examTime);
+          const endTime = new Date(examTime.getTime() + exam.duration * 60 * 1000);
+          let status = 'upcoming';
+          if (now >= examTime && now <= endTime) status = 'ongoing';
+          else if (now > endTime) status = 'ended';
+          const typeColor = EXAM_TYPE_COLORS[exam.examType] || '#6b7280';
+          const canDownload = now >= examTime && !!exam.paperFile;
+          const course = exam.course || {};
+          return `
+            <div class="exam-student-card status-${status}" data-idx="${idx}">
+              <div class="exam-student-header">
+                <div>
+                  <div class="exam-student-course">${escapeHtml(course.name || '未知课程')}</div>
+                  <div class="exam-student-code">${escapeHtml(course.code || '')}</div>
+                </div>
+                <div class="exam-student-type" style="background:${typeColor}15;color:${typeColor};border:1px solid ${typeColor}30;">
+                  ${EXAM_TYPE_LABELS[exam.examType] || exam.examType}
+                </div>
+              </div>
+              <div class="exam-student-info">
+                <div class="exam-info-item">
+                  <span class="exam-info-icon">🕒</span>
+                  <span class="exam-info-label">考试时间</span>
+                  <span class="exam-info-value">${formatDateTime(exam.examTime)}</span>
+                </div>
+                <div class="exam-info-item">
+                  <span class="exam-info-icon">⏱️</span>
+                  <span class="exam-info-label">考试时长</span>
+                  <span class="exam-info-value">${exam.duration} 分钟</span>
+                </div>
+                <div class="exam-info-item">
+                  <span class="exam-info-icon">📍</span>
+                  <span class="exam-info-label">考试地点</span>
+                  <span class="exam-info-value">${escapeHtml(exam.location) || '待定'}</span>
+                </div>
+              </div>
+              ${
+                status === 'upcoming'
+                  ? `
+                <div class="exam-countdown-wrap">
+                  <div class="exam-countdown-title">⏰ 距开考还有</div>
+                  <div class="exam-countdown" data-idx="${idx}">
+                    <span class="cd-unit"><span class="cd-num cd-days">0</span><span class="cd-label">天</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-hours">0</span><span class="cd-label">时</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-mins">0</span><span class="cd-label">分</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-secs">0</span><span class="cd-label">秒</span></span>
+                  </div>
+                </div>
+                <div class="exam-student-actions">
+                  <button type="button" class="btn btn-disabled" disabled title="考试开始后方可下载">
+                    🔒 试卷未开放
+                  </button>
+                </div>`
+                  : status === 'ongoing'
+                  ? `
+                <div class="exam-countdown-wrap" style="background:linear-gradient(135deg,#f59e0b15,#f9731615);border-color:#f59e0b40;">
+                  <div class="exam-countdown-title" style="color:#f59e0b;">🔔 考试进行中</div>
+                  <div class="exam-countdown" data-idx="${idx}">
+                    <span class="cd-unit"><span class="cd-num cd-days" style="color:#f59e0b;">0</span><span class="cd-label">天</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-hours" style="color:#f59e0b;">0</span><span class="cd-label">时</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-mins" style="color:#f59e0b;">0</span><span class="cd-label">分</span></span>
+                    <span class="cd-sep">:</span>
+                    <span class="cd-unit"><span class="cd-num cd-secs" style="color:#f59e0b;">0</span><span class="cd-label">秒</span></span>
+                  </div>
+                </div>
+                <div class="exam-student-actions">
+                  ${
+                    exam.paperFile
+                      ? `<button type="button" class="btn btn-primary" onclick="window.__downloadPaper(${exam.id})">📄 下载试卷</button>`
+                      : `<button type="button" class="btn btn-disabled" disabled>📄 教师未上传试卷</button>`
+                  }
+                </div>`
+                  : `
+                <div class="exam-countdown-wrap" style="background:linear-gradient(135deg,#6b728010,#4b556310);border-color:#6b728030;">
+                  <div class="exam-countdown-title" style="color:#6b7280;">✅ 考试已结束</div>
+                  <div style="color:var(--text-secondary);font-size:0.875rem;margin-top:8px;">请前往「我的成绩」查看成绩录入状态</div>
+                </div>
+                <div class="exam-student-actions">
+                  <button type="button" class="btn btn-ghost" onclick="window.__showGradePage()">📊 查看成绩</button>
+                </div>`
+              }
+            </div>`;
+        })
+        .join('') +
+      '</div>';
+
+    const style = document.createElement('style');
+    style.id = 'examStudentStyle';
+    if (!document.getElementById('examStudentStyle')) {
+      style.textContent = `
+        .exam-student-list{display:flex;flex-direction:column;gap:20px;}
+        .exam-student-card{background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--bg-glass-border);border-radius:var(--radius);padding:28px;transition:all .25s ease;}
+        .exam-student-card.status-upcoming{background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.08));border-color:rgba(99,102,241,0.25);}
+        .exam-student-card.status-ongoing{background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.08));border-color:rgba(245,158,11,0.3);}
+        .exam-student-card.status-ended{opacity:.85;}
+        .exam-student-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:16px;flex-wrap:wrap;}
+        .exam-student-course{font-size:1.25rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
+        .exam-student-code{font-size:0.875rem;color:var(--text-secondary);}
+        .exam-student-type{padding:6px 14px;border-radius:20px;font-size:0.8125rem;font-weight:600;white-space:nowrap;}
+        .exam-student-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;padding:16px;background:rgba(255,255,255,0.03);border-radius:12px;}
+        .exam-info-item{display:flex;align-items:center;gap:8px;font-size:0.875rem;}
+        .exam-info-icon{font-size:1.1rem;}
+        .exam-info-label{color:var(--text-secondary);min-width:60px;}
+        .exam-info-value{color:var(--text-primary);font-weight:500;}
+        .exam-countdown-wrap{padding:20px;border-radius:12px;background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border:1px solid rgba(99,102,241,0.25);text-align:center;margin-bottom:20px;}
+        .exam-countdown-title{font-size:1rem;font-weight:600;color:#6366f1;margin-bottom:12px;}
+        .exam-countdown{display:inline-flex;align-items:center;gap:8px;}
+        .cd-unit{display:flex;flex-direction:column;align-items:center;min-width:56px;}
+        .cd-num{font-size:2rem;font-weight:800;color:#6366f1;font-variant-numeric:tabular-nums;font-family:ui-monospace,Consolas,monospace;line-height:1;}
+        .cd-label{font-size:0.75rem;color:var(--text-secondary);margin-top:4px;}
+        .cd-sep{font-size:1.5rem;font-weight:700;color:#6366f150;padding-bottom:16px;}
+        .exam-student-actions{display:flex;justify-content:flex-end;gap:12px;}
+        .btn-disabled{opacity:.5;cursor:not-allowed;}
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  function startExamCountdown() {
+    if (examCountdownTimer) clearInterval(examCountdownTimer);
+    updateCountdowns();
+    examCountdownTimer = setInterval(updateCountdowns, 1000);
+  }
+
+  function updateCountdowns() {
+    const now = new Date();
+    let needRerender = false;
+    currentExams.forEach((exam, idx) => {
+      const examTime = new Date(exam.examTime);
+      const endTime = new Date(examTime.getTime() + exam.duration * 60 * 1000);
+      const cdEl = document.querySelector(`.exam-countdown[data-idx="${idx}"]`);
+      if (!cdEl) return;
+      let target;
+      if (now < examTime) {
+        target = examTime;
+      } else if (now >= examTime && now <= endTime) {
+        target = endTime;
+      } else {
+        return;
+      }
+      const diff = target - now;
+      if (diff <= 0) {
+        needRerender = true;
+        return;
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const dayEl = cdEl.querySelector('.cd-days');
+      const hourEl = cdEl.querySelector('.cd-hours');
+      const minEl = cdEl.querySelector('.cd-mins');
+      const secEl = cdEl.querySelector('.cd-secs');
+      if (dayEl) dayEl.textContent = days;
+      if (hourEl) hourEl.textContent = pad(hours);
+      if (minEl) minEl.textContent = pad(mins);
+      if (secEl) secEl.textContent = pad(secs);
+    });
+    if (needRerender) {
+      renderExamList();
+    }
+  }
+
+  window.__downloadPaper = function (examId) {
+    const a = document.createElement('a');
+    a.href = `${API_BASE}/api/exams/${examId}/paper?studentId=${user.id}`;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  window.__showGradePage = function () {
+    showGradePage();
+  };
+
+  function showGradePage() {
+    hideAllPages();
+    document.getElementById('gradePage').style.display = 'block';
+    loadStudentGrades();
+  }
+
+  function hideGradePage() {
+    document.getElementById('gradePage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadStudentGrades() {
+    const tbody = document.getElementById('gradeTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</td></tr>';
+    try {
+      const { data } = await api(`/api/exams/student/${user.id}/grades`);
+      if (data && data.ok && Array.isArray(data.data)) {
+        const list = data.data;
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:48px;">暂无成绩数据</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list
+          .map((item) => {
+            const course = item.course || {};
+            const exam = item.exam || null;
+            const statusBadge =
+              item.status === 'pending_grade'
+                ? '<span class="status-badge status-pending" style="background:#f59e0b20;color:#f59e0b;border:1px solid #f59e0b30;">成绩待录入</span>'
+                : item.status === 'graded'
+                ? `<span class="status-badge status-success" style="background:#10b98120;color:#10b981;border:1px solid #10b98130;">已发布</span>`
+                : '<span class="status-badge" style="background:#6b728020;color:#6b7280;border:1px solid #6b728030;">未考试</span>';
+            const gradeText = item.grade != null ? `<span style="font-weight:700;font-size:1.1rem;color:var(--text-primary);">${item.grade}</span>` : '<span style="color:var(--text-secondary);">-</span>';
+            return `
+              <tr>
+                <td>${escapeHtml(course.code || '')}</td>
+                <td>${escapeHtml(course.name || '')}</td>
+                <td>${course.credit ?? 0}</td>
+                <td>${exam ? formatDateTime(exam.examTime) : '<span style="color:var(--text-secondary);">暂无安排</span>'}</td>
+                <td>${gradeText}</td>
+                <td>${statusBadge}</td>
+              </tr>`;
+          })
+          .join('');
+
+        const style = document.createElement('style');
+        style.id = 'gradeStyle';
+        if (!document.getElementById('gradeStyle')) {
+          style.textContent = `
+            .status-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:0.8125rem;font-weight:600;}
+          `;
+          document.head.appendChild(style);
+        }
+      } else {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:48px;">${(data && data.message) || '加载失败'}</td></tr>`;
+      }
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:48px;">网络错误</td></tr>';
+    }
   }
 
   async function loadBadgeData() {
@@ -1706,10 +2004,16 @@
       document.getElementById('ticketDetailPage').style.display = 'none';
       const calPage = document.getElementById('calendarPage');
       const badgePage = document.getElementById('badgePage');
+      const examPage = document.getElementById('examPage');
+      const gradePage = document.getElementById('gradePage');
       if (calPage && calPage.style.display === 'block') {
         calPage.style.display = 'block';
       } else if (badgePage && badgePage.style.display === 'block') {
         badgePage.style.display = 'block';
+      } else if (examPage && examPage.style.display === 'block') {
+        examPage.style.display = 'block';
+      } else if (gradePage && gradePage.style.display === 'block') {
+        gradePage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -1741,8 +2045,14 @@
     hideCalendarPage = function () {
       document.getElementById('calendarPage').style.display = 'none';
       const badgePage = document.getElementById('badgePage');
+      const examPage = document.getElementById('examPage');
+      const gradePage = document.getElementById('gradePage');
       if (badgePage && badgePage.style.display === 'block') {
         badgePage.style.display = 'block';
+      } else if (examPage && examPage.style.display === 'block') {
+        examPage.style.display = 'block';
+      } else if (gradePage && gradePage.style.display === 'block') {
+        gradePage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -1750,6 +2060,10 @@
 
     document.getElementById('badgeBtn').addEventListener('click', showBadgePage);
     document.getElementById('badgeBackBtn').addEventListener('click', hideBadgePage);
+    document.getElementById('examBtn').addEventListener('click', showExamPage);
+    document.getElementById('examBackBtn').addEventListener('click', hideExamPage);
+    document.getElementById('gradeBtn').addEventListener('click', showGradePage);
+    document.getElementById('gradeBackBtn').addEventListener('click', hideGradePage);
     document.getElementById('loadMorePointsBtn').addEventListener('click', () => loadPointRecords(true));
     document.getElementById('cancelEvaluateBtn').addEventListener('click', closeEvaluateModal);
     document.getElementById('submitEvaluateBtn').addEventListener('click', submitEvaluation);

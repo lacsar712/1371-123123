@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const logger = require('./logger');
-const { Admin, Student, Teacher, Course, Enrollment } = require('./models');
+const { Admin, Student, Teacher, Course, Enrollment, Exam } = require('./models');
 const { ensureBadgesSeeded } = require('./badgeRules');
 
 function hashPassword(password) {
@@ -51,6 +51,11 @@ async function ensureTestAccounts() {
 async function seed() {
   await ensureBadgesSeeded();
   await ensureTestAccounts();
+
+  const teachers = await Teacher.findAll({ attributes: ['id', 'teacherNo'] });
+  const teacher1 = teachers.find((t) => t.teacherNo === 'teacher') || teachers[0];
+  const teacher2 = teachers.find((t) => t.teacherNo === 'T2024001') || teachers[0];
+
   const courseCount = await Course.count();
   const schedulesCS101 = JSON.stringify([
     { dayOfWeek: 1, startTime: '08:00', endTime: '09:40', startWeek: 1, endWeek: 16, location: 'A101' },
@@ -73,15 +78,16 @@ async function seed() {
     { dayOfWeek: 4, startTime: '14:00', endTime: '15:40', startWeek: 1, endWeek: 16, location: 'E404' },
   ]);
   const courseData = [
-    { code: 'CS101', name: '数据结构', credit: 4, capacity: 60, schedules: schedulesCS101, examTime: '2026-06-16T09:00:00', examDuration: 120 },
-    { code: 'CS102', name: '计算机网络', credit: 3, capacity: 50, schedules: schedulesCS102, examTime: '2026-06-18T14:00:00', examDuration: 120 },
-    { code: 'CS103', name: '操作系统', credit: 4, capacity: 55, schedules: schedulesCS103, examTime: '2026-06-20T09:00:00', examDuration: 120 },
-    { code: 'MATH201', name: '高等数学', credit: 5, capacity: 80, schedules: schedulesMATH201, examTime: '2026-06-22T09:00:00', examDuration: 150 },
-    { code: 'ENG101', name: '大学英语', credit: 2, capacity: 100, schedules: schedulesENG101, examTime: '2026-06-24T14:00:00', examDuration: 120 },
+    { code: 'CS101', name: '数据结构', credit: 4, capacity: 60, schedules: schedulesCS101, examTime: '2026-06-16T09:00:00', examDuration: 120, teacherId: teacher1.id },
+    { code: 'CS102', name: '计算机网络', credit: 3, capacity: 50, schedules: schedulesCS102, examTime: '2026-06-18T14:00:00', examDuration: 120, teacherId: teacher1.id },
+    { code: 'CS103', name: '操作系统', credit: 4, capacity: 55, schedules: schedulesCS103, examTime: '2026-06-20T09:00:00', examDuration: 120, teacherId: teacher2.id },
+    { code: 'MATH201', name: '高等数学', credit: 5, capacity: 80, schedules: schedulesMATH201, examTime: '2026-06-22T09:00:00', examDuration: 150, teacherId: teacher2.id },
+    { code: 'ENG101', name: '大学英语', credit: 2, capacity: 100, schedules: schedulesENG101, examTime: '2026-06-24T14:00:00', examDuration: 120, teacherId: teacher1.id },
   ];
 
+  let createdCourses = [];
   if (courseCount === 0) {
-    await Course.bulkCreate(courseData);
+    createdCourses = await Course.bulkCreate(courseData);
     await Enrollment.bulkCreate([
       { studentId: 1, courseId: 1 },
       { studentId: 1, courseId: 2 },
@@ -89,6 +95,7 @@ async function seed() {
     ]);
     logger.info('Seed completed');
   } else {
+    createdCourses = [];
     for (const cd of courseData) {
       const existing = await Course.findOne({ where: { code: cd.code } });
       if (existing) {
@@ -96,13 +103,39 @@ async function seed() {
         if (!existing.schedules && cd.schedules) patch.schedules = cd.schedules;
         if (!existing.examTime && cd.examTime) patch.examTime = cd.examTime;
         if ((existing.examDuration || 0) < 1 && cd.examDuration) patch.examDuration = cd.examDuration;
+        if (!existing.teacherId && cd.teacherId) patch.teacherId = cd.teacherId;
         if (Object.keys(patch).length > 0) {
           await existing.update(patch);
           logger.info(`Updated course schedule for ${cd.code}`);
         }
+        createdCourses.push(existing);
+      } else {
+        const c = await Course.create(cd);
+        createdCourses.push(c);
       }
     }
     logger.info('Seed patches applied');
+  }
+
+  const examCount = await Exam.count();
+  if (examCount === 0) {
+    const examData = [];
+    for (const course of createdCourses) {
+      if (course.examTime) {
+        examData.push({
+          courseId: course.id,
+          teacherId: course.teacherId || teacher1.id,
+          examTime: course.examTime,
+          duration: course.examDuration || 120,
+          location: `${course.code}考场`,
+          examType: 'closed',
+        });
+      }
+    }
+    if (examData.length > 0) {
+      await Exam.bulkCreate(examData);
+      logger.info('Seed exams completed');
+    }
   }
 }
 

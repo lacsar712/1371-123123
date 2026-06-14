@@ -1080,6 +1080,314 @@
     }
   }
 
+  let editingExamId = null;
+  let uploadExamId = null;
+
+  function apiUpload(path, formData) {
+    return fetch(API_BASE + path, {
+      method: 'POST',
+      body: formData,
+    }).then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })));
+  }
+
+  function fmtDateTimeLocal(d) {
+    if (!d) return '';
+    const date = new Date(d);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function examTypeLabel(t) {
+    return { closed: '闭卷', open: '开卷', computer: '机试' }[t] || t;
+  }
+
+  function examTypeColorClass(t) {
+    return { closed: 'exam-type-closed', open: 'exam-type-open', computer: 'exam-type-computer' }[t] || '';
+  }
+
+  function showExamPage() {
+    hideAllTeacherPages();
+    document.getElementById('examPage').style.display = 'block';
+    loadExamList();
+  }
+
+  function hideExamPage() {
+    document.getElementById('examPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  function hideAllTeacherPages() {
+    document.querySelector('main.student-main').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'none';
+    document.getElementById('ticketDetailPage').style.display = 'none';
+    document.getElementById('calendarPage') && (document.getElementById('calendarPage').style.display = 'none');
+    document.getElementById('examPage').style.display = 'none';
+  }
+
+  async function loadExamList() {
+    const container = document.getElementById('examList');
+    const { data } = await api(`/api/exams/teacher/${user.id}`);
+    if (data && data.ok && Array.isArray(data.data)) {
+      const exams = data.data;
+      if (!exams.length) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;"><div style="font-size:3rem;margin-bottom:16px;opacity:0.5;">📝</div>暂无考试安排，点击右上角「新增考试」创建</div>';
+        return;
+      }
+      container.innerHTML = exams.map((e) => {
+        const examTime = new Date(e.examTime);
+        const endTime = new Date(examTime.getTime() + e.duration * 60 * 1000);
+        const now = new Date();
+        let statusBadge = '';
+        if (now < examTime) {
+          statusBadge = '<span class="exam-status exam-status-pending">未开始</span>';
+        } else if (now >= examTime && now < endTime) {
+          statusBadge = '<span class="exam-status exam-status-ongoing">进行中</span>';
+        } else {
+          statusBadge = '<span class="exam-status exam-status-ended">已结束</span>';
+        }
+        const paperHtml = e.hasPaper
+          ? `<span class="exam-paper exam-paper-exists">📎 ${escapeHtml(e.paperFileName || '试卷已上传')}</span>`
+          : `<span class="exam-paper exam-paper-none">📎 暂未上传试卷</span>`;
+        return `
+          <div class="exam-card" data-id="${e.id}">
+            <div class="exam-card-header">
+              <div>
+                <span class="exam-course-name">${escapeHtml(e.course?.name || '')}</span>
+                <span class="exam-course-code">${escapeHtml(e.course?.code || '')}</span>
+              </div>
+              ${statusBadge}
+            </div>
+            <div class="exam-card-body">
+              <div class="exam-info-row">
+                <div class="exam-info-item">
+                  <span class="exam-info-label">⏰ 考试时间</span>
+                  <span class="exam-info-value">${formatDateTime(e.examTime)}</span>
+                </div>
+                <div class="exam-info-item">
+                  <span class="exam-info-label">⏱ 时长</span>
+                  <span class="exam-info-value">${e.duration} 分钟</span>
+                </div>
+                <div class="exam-info-item">
+                  <span class="exam-info-label">📍 地点</span>
+                  <span class="exam-info-value">${escapeHtml(e.location)}</span>
+                </div>
+                <div class="exam-info-item">
+                  <span class="exam-info-label">📋 类型</span>
+                  <span class="exam-type-tag ${examTypeColorClass(e.examType)}">${examTypeLabel(e.examType)}</span>
+                </div>
+                <div class="exam-info-item" style="flex-basis:100%;margin-top:4px;">
+                  ${paperHtml}
+                </div>
+              </div>
+            </div>
+            <div class="exam-card-actions">
+              <button type="button" class="btn btn-ghost btn-sm" data-action="edit" data-id="${e.id}">编辑</button>
+              <button type="button" class="btn btn-primary btn-sm" data-action="upload" data-id="${e.id}">${e.hasPaper ? '重新上传试卷' : '上传试卷'}</button>
+              <button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="${e.id}">删除</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.exam-card [data-action="edit"]').forEach((btn) => {
+        btn.addEventListener('click', () => openExamModal(parseInt(btn.dataset.id, 10)));
+      });
+      container.querySelectorAll('.exam-card [data-action="upload"]').forEach((btn) => {
+        btn.addEventListener('click', () => openUploadModal(parseInt(btn.dataset.id, 10)));
+      });
+      container.querySelectorAll('.exam-card [data-action="delete"]').forEach((btn) => {
+        btn.addEventListener('click', () => deleteExam(parseInt(btn.dataset.id, 10)));
+      });
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+    }
+  }
+
+  function openExamModal(id) {
+    editingExamId = id || null;
+    const modal = document.getElementById('examModal');
+    const titleEl = document.getElementById('examModalTitle');
+    const courseSel = document.getElementById('examCourseId');
+    courseSel.innerHTML = '<option value="">请选择课程</option>' +
+      courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+
+    if (id) {
+      titleEl.textContent = '编辑考试';
+      loadExamDetail(id);
+    } else {
+      titleEl.textContent = '新增考试';
+      document.getElementById('examTime').value = '';
+      document.getElementById('examDuration').value = 120;
+      document.getElementById('examLocation').value = '';
+      document.getElementById('examType').value = 'closed';
+    }
+    modal.classList.add('show');
+  }
+
+  function closeExamModal() {
+    editingExamId = null;
+    document.getElementById('examModal').classList.remove('show');
+  }
+
+  async function loadExamDetail(id) {
+    const { data } = await api(`/api/exams/${id}`);
+    if (data && data.ok && data.data) {
+      const e = data.data;
+      document.getElementById('examCourseId').value = e.courseId;
+      document.getElementById('examTime').value = fmtDateTimeLocal(e.examTime);
+      document.getElementById('examDuration').value = e.duration;
+      document.getElementById('examLocation').value = e.location;
+      document.getElementById('examType').value = e.examType;
+    }
+  }
+
+  async function saveExam() {
+    const courseId = parseInt(document.getElementById('examCourseId').value, 10);
+    const examTime = document.getElementById('examTime').value;
+    const duration = parseInt(document.getElementById('examDuration').value, 10);
+    const location = document.getElementById('examLocation').value.trim();
+    const examType = document.getElementById('examType').value;
+
+    if (!courseId) { showToast('请选择课程', 'error'); return; }
+    if (!examTime) { showToast('请选择考试时间', 'error'); return; }
+    if (!duration || duration < 1) { showToast('时长必须为正整数', 'error'); return; }
+    if (!location) { showToast('请填写考试地点', 'error'); return; }
+
+    const btn = document.getElementById('examSaveBtn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    const payload = { courseId, teacherId: user.id, examTime, duration, location, examType };
+    try {
+      let resp;
+      if (editingExamId) {
+        resp = await api(`/api/exams/${editingExamId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ teacherId: user.id, examTime, duration, location, examType }),
+        });
+      } else {
+        resp = await api('/api/exams', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      const { data } = resp;
+      if (data && data.ok) {
+        showToast(editingExamId ? '已更新' : '已创建', 'success');
+        closeExamModal();
+        loadExamList();
+      } else {
+        showToast((data && data.message) || '保存失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '保存';
+    }
+  }
+
+  async function deleteExam(id) {
+    const ok = await showConfirm('确定删除该考试安排吗？此操作不可恢复。', '删除确认');
+    if (!ok) return;
+    try {
+      const { data } = await api(`/api/exams/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ teacherId: user.id }),
+      });
+      if (data && data.ok) {
+        showToast('已删除', 'success');
+        loadExamList();
+      } else {
+        showToast((data && data.message) || '删除失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    }
+  }
+
+  function openUploadModal(examId) {
+    uploadExamId = examId;
+    const modal = document.getElementById('uploadModal');
+    document.getElementById('paperFile').value = '';
+    const uploadedInfo = document.getElementById('uploadedInfo');
+    uploadedInfo.style.display = 'none';
+    document.getElementById('uploadedFileName').textContent = '';
+
+    const container = document.getElementById('examList');
+    const card = container.querySelector(`.exam-card[data-id="${examId}"]`);
+    let infoText = '';
+    if (card) {
+      infoText = card.querySelector('.exam-course-name').textContent + ' · ' + card.querySelector('.exam-course-code').textContent;
+    }
+    document.getElementById('uploadExamInfo').textContent = infoText;
+
+    modal.classList.add('show');
+  }
+
+  function closeUploadModal() {
+    uploadExamId = null;
+    document.getElementById('uploadModal').classList.remove('show');
+  }
+
+  async function uploadPaper() {
+    if (!uploadExamId) return;
+    const fileInput = document.getElementById('paperFile');
+    const file = fileInput.files[0];
+    if (!file) { showToast('请选择文件', 'error'); return; }
+
+    const formData = new FormData();
+    formData.append('paper', file);
+    formData.append('teacherId', user.id);
+
+    const btn = document.getElementById('uploadSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '上传中...';
+
+    try {
+      const { data } = await apiUpload(`/api/exams/${uploadExamId}/upload`, formData);
+      if (data && data.ok) {
+        showToast('上传成功', 'success');
+        document.getElementById('uploadedFileName').textContent = data.data.paperFileName || file.name;
+        document.getElementById('uploadedInfo').style.display = 'block';
+        closeUploadModal();
+        loadExamList();
+      } else {
+        showToast((data && data.message) || '上传失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '上传';
+    }
+  }
+
+  function showConfirm(message, title = '确认') {
+    const overlay = document.getElementById('confirmOverlay');
+    const messageEl = document.getElementById('confirmMessage');
+    const titleEl = document.getElementById('confirmTitle');
+    if (!overlay || !messageEl || !titleEl) return Promise.resolve(false);
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    overlay.classList.add('show');
+    return new Promise((resolve) => {
+      const done = (result) => {
+        overlay.classList.remove('show');
+        resolve(result);
+        overlay.removeEventListener('click', onOverlayClick);
+        document.getElementById('confirmCancel').removeEventListener('click', onCancel);
+        document.getElementById('confirmOk').removeEventListener('click', onOk);
+      };
+      const onOverlayClick = (e) => { if (e.target === overlay) done(false); };
+      const onCancel = () => done(false);
+      const onOk = () => done(true);
+      overlay.addEventListener('click', onOverlayClick);
+      document.getElementById('confirmCancel').addEventListener('click', onCancel);
+      document.getElementById('confirmOk').addEventListener('click', onOk);
+    });
+  }
+
   const _origTeacherInit = init;
   function teacherInitWithCalendar() {
     init();
@@ -1097,10 +1405,255 @@
       const calPage = document.getElementById('calendarPage');
       if (calPage && calPage.style.display === 'block') {
         calPage.style.display = 'block';
+      } else if (document.getElementById('examPage').style.display === 'block') {
+        document.getElementById('examPage').style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
     };
+
+    const examBtn = document.getElementById('examBtn');
+    examBtn && examBtn.addEventListener('click', showExamPage);
+    const examBackBtn = document.getElementById('examBackBtn');
+    examBackBtn && examBackBtn.addEventListener('click', hideExamPage);
+    const newExamBtn = document.getElementById('newExamBtn');
+    newExamBtn && newExamBtn.addEventListener('click', () => openExamModal(null));
+    const examCancelBtn = document.getElementById('examCancelBtn');
+    examCancelBtn && examCancelBtn.addEventListener('click', closeExamModal);
+    const examSaveBtn = document.getElementById('examSaveBtn');
+    examSaveBtn && examSaveBtn.addEventListener('click', saveExam);
+    const examModal = document.getElementById('examModal');
+    examModal && examModal.addEventListener('click', (e) => {
+      if (e.target.id === 'examModal') closeExamModal();
+    });
+    const uploadCancelBtn = document.getElementById('uploadCancelBtn');
+    uploadCancelBtn && uploadCancelBtn.addEventListener('click', closeUploadModal);
+    const uploadSubmitBtn = document.getElementById('uploadSubmitBtn');
+    uploadSubmitBtn && uploadSubmitBtn.addEventListener('click', uploadPaper);
+    const uploadModal = document.getElementById('uploadModal');
+    uploadModal && uploadModal.addEventListener('click', (e) => {
+      if (e.target.id === 'uploadModal') closeUploadModal();
+    });
+  }
+
+  const confirmStyle = document.createElement('style');
+  confirmStyle.textContent = `
+    .exam-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      transition: all 0.2s;
+    }
+    .exam-card:hover {
+      border-color: var(--accent-start);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.12);
+    }
+    .exam-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+    .exam-course-name {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-right: 8px;
+    }
+    .exam-course-code {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+    .exam-status {
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .exam-status-pending { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .exam-status-ongoing { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+    .exam-status-ended { background: rgba(161, 161, 170, 0.15); color: #a1a1aa; }
+    .exam-card-body { margin-bottom: 16px; }
+    .exam-info-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 32px;
+    }
+    .exam-info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .exam-info-label {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+    .exam-info-value {
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+    .exam-type-tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      width: fit-content;
+    }
+    .exam-type-closed { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+    .exam-type-open { background: rgba(34, 197, 94, 0.12); color: #4ade80; }
+    .exam-type-computer { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
+    .exam-paper {
+      font-size: 0.875rem;
+    }
+    .exam-paper-exists { color: #4ade80; }
+    .exam-paper-none { color: var(--text-secondary); }
+    .exam-card-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      border-top: 1px solid var(--bg-glass-border);
+      padding-top: 16px;
+    }
+    .btn-sm {
+      height: 36px;
+      padding: 0 16px;
+      font-size: 0.875rem;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s, visibility 0.25s;
+    }
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 90%;
+      max-width: 500px;
+      transform: translateY(20px);
+      transition: transform 0.25s;
+    }
+    .modal-overlay.show .modal {
+      transform: translateY(0);
+    }
+    .modal h2 {
+      margin: 0 0 24px 0;
+      font-size: 1.25rem;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--bg-glass-border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+      font-family: inherit;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--accent-start);
+    }
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .confirm-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s, visibility 0.25s;
+    }
+    .confirm-modal.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal-confirm {
+      max-width: 420px;
+    }
+    .confirm-title {
+      color: var(--text-primary);
+    }
+    .confirm-message {
+      color: var(--text-secondary);
+      line-height: 1.6;
+      padding: 0 32px 16px;
+      margin: 0;
+    }
+    .confirm-actions {
+      padding: 0 32px 32px;
+      margin: 0;
+    }
+    input[type="file"] {
+      cursor: pointer;
+    }
+    input[type="file"]::-webkit-file-upload-button {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent-start);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      margin-right: 12px;
+      cursor: pointer;
+    }
+  `;
+  document.head.appendChild(confirmStyle);
+
+  if (!document.getElementById('confirmOverlay')) {
+    const confirmHtml = `
+      <div id="confirmOverlay" class="modal-overlay confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+        <div class="modal modal-confirm">
+          <h2 id="confirmTitle" class="confirm-title">确认</h2>
+          <p id="confirmMessage" class="confirm-message"></p>
+          <div class="modal-actions confirm-actions">
+            <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+            <button type="button" class="btn btn-danger" id="confirmOk">确定</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', confirmHtml);
   }
 
   teacherInitWithCalendar();

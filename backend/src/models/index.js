@@ -31,6 +31,7 @@ const Badge = require('./Badge')(sequelize);
 const StudentBadge = require('./StudentBadge')(sequelize);
 const PointRecord = require('./PointRecord')(sequelize);
 const CourseEvaluation = require('./CourseEvaluation')(sequelize);
+const Exam = require('./Exam')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Student.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
@@ -69,6 +70,15 @@ CourseEvaluation.belongsTo(Student, { foreignKey: 'studentId' });
 Course.hasMany(CourseEvaluation, { foreignKey: 'courseId' });
 CourseEvaluation.belongsTo(Course, { foreignKey: 'courseId' });
 
+Teacher.hasMany(Course, { foreignKey: 'teacherId' });
+Course.belongsTo(Teacher, { foreignKey: 'teacherId', as: 'teacher' });
+
+Course.hasMany(Exam, { foreignKey: 'courseId' });
+Exam.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
+Teacher.hasMany(Exam, { foreignKey: 'teacherId' });
+Exam.belongsTo(Teacher, { foreignKey: 'teacherId', as: 'teacher' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -87,4 +97,5 @@ module.exports = {
   StudentBadge,
   PointRecord,
   CourseEvaluation,
+  Exam,
 };

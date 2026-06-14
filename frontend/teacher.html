@@ -184,6 +184,9 @@
   <header class="student-header page-enter">
     <h1>考勤管理</h1>
     <div>
+      <button type="button" class="btn btn-ghost" id="examBtn" style="margin-right:12px;">
+        📝 考试安排
+      </button>
       <button type="button" class="btn btn-ghost" id="calendarBtn" style="margin-right:12px;">
         📅 校历
       </button>
@@ -332,6 +335,75 @@
     <div id="ticketReplySection" class="ticket-reply-section" style="display:none;">
       <textarea id="replyContent" placeholder="输入您的回复..." rows="3"></textarea>
       <button type="button" class="btn btn-primary" id="submitReplyBtn">提交回复</button>
+    </div>
+  </div>
+
+  <div id="examPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header" style="max-width:1100px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="examBackBtn">← 返回</button>
+      <h2 style="margin:0;">考试安排</h2>
+      <button type="button" class="btn btn-primary" id="newExamBtn">＋ 新增考试</button>
+    </div>
+    <div id="examList" style="max-width:1100px;margin:0 auto;">
+      <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+    </div>
+  </div>
+
+  <div id="examModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:640px;">
+      <h2 id="examModalTitle">新增考试</h2>
+      <div class="form-group">
+        <label for="examCourseId">归属课程</label>
+        <select id="examCourseId">
+          <option value="">请选择课程</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="examTime">考试时间</label>
+        <input type="datetime-local" id="examTime" />
+      </div>
+      <div class="form-group">
+        <label for="examDuration">时长（分钟）</label>
+        <input type="number" id="examDuration" value="120" min="1" step="1" />
+      </div>
+      <div class="form-group">
+        <label for="examLocation">考试地点</label>
+        <input type="text" id="examLocation" placeholder="例如：A101 教学楼" />
+      </div>
+      <div class="form-group">
+        <label for="examType">考试类型</label>
+        <select id="examType">
+          <option value="closed">闭卷</option>
+          <option value="open">开卷</option>
+          <option value="computer">机试</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="examCancelBtn">取消</button>
+        <button type="button" class="btn btn-primary" id="examSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="uploadModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:520px;">
+      <h2 id="uploadModalTitle">上传试卷文件</h2>
+      <div id="uploadExamInfo" style="padding:0 0 16px;color:var(--text-secondary);"></div>
+      <div class="form-group">
+        <label for="paperFile">选择试卷文件</label>
+        <input type="file" id="paperFile" accept=".pdf,.doc,.docx,.zip,.rar,.txt,.jpg,.jpeg,.png" />
+        <div style="margin-top:8px;font-size:0.8125rem;color:var(--text-secondary);">
+          支持 PDF / Word / 压缩包 / 图片 格式，最大 20MB
+        </div>
+      </div>
+      <div id="uploadedInfo" style="display:none;padding:12px 16px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:12px;margin-bottom:16px;">
+        <span style="color:#22c55e;">✓ 已上传：</span>
+        <span id="uploadedFileName" style="color:var(--text-primary);"></span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="uploadCancelBtn">关闭</button>
+        <button type="button" class="btn btn-primary" id="uploadSubmitBtn">上传</button>
+      </div>
     </div>
   </div>
 
