@@ -23,6 +23,7 @@ const attendanceRouter = require('./routes/attendance');
 const ticketsRouter = require('./routes/tickets');
 const notificationsRouter = require('./routes/notifications');
 const calendarRouter = require('./routes/calendar');
+const badgesRouter = require('./routes/badges');
 const seed = require('./seed').seed;
 
 const PORT = parseInt(process.env.PORT || '8137', 10);
@@ -39,6 +40,7 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/tickets', ticketsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/calendar', calendarRouter);
+app.use('/api/badges', badgesRouter);
 
 app.use(express.static(path.join(__dirname, '..', '..', 'frontend')));
 

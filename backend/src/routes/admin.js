@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const router = express.Router();
 const { Course, Enrollment, Student, AttendanceSession, AttendanceRecord, LotteryEntry, sequelize } = require('../models');
 const { hashPassword } = require('../db');
+const { triggerEvent } = require('../badgeRules');
 const logger = require('../logger');
 
 // ========== 学生管理 ==========
@@ -430,6 +431,10 @@ router.post('/lottery/execute/:courseId', param('courseId').isInt({ min: 1 }), a
         );
       }
       await t.commit();
+      for (const w of winners) {
+        triggerEvent('lottery_won', w.studentId, { courseName: course.name });
+        triggerEvent('enroll', w.studentId, { courseName: course.name });
+      }
     } catch (e) {
       await t.rollback();
       throw e;

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const logger = require('./logger');
 const { Admin, Student, Teacher, Course, Enrollment } = require('./models');
+const { ensureBadgesSeeded } = require('./badgeRules');
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password, 'utf8').digest('hex');
@@ -48,6 +49,7 @@ async function ensureTestAccounts() {
 }
 
 async function seed() {
+  await ensureBadgesSeeded();
   await ensureTestAccounts();
   const courseCount = await Course.count();
   const schedulesCS101 = JSON.stringify([

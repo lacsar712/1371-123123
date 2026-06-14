@@ -14,6 +14,9 @@
       <button type="button" class="btn btn-ghost" id="calendarBtn" style="margin-right:12px;">
         📅 校历
       </button>
+      <button type="button" class="btn btn-ghost" id="badgeBtn" style="margin-right:12px;">
+        🏅 我的勋章
+      </button>
       <button type="button" class="btn btn-ghost" id="ticketBtn" style="margin-right:12px;position:relative;">
         📩 我的工单
         <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
@@ -152,6 +155,93 @@
     <div id="ticketReplySection" class="ticket-reply-section" style="display:none;">
       <textarea id="replyContent" placeholder="输入您的回复..." rows="3"></textarea>
       <button type="button" class="btn btn-primary" id="submitReplyBtn">提交回复</button>
+    </div>
+  </div>
+
+  <div id="badgePage" class="badge-page" style="display:none;">
+    <div class="ticket-header" style="max-width:1200px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="badgeBackBtn">← 返回</button>
+      <h2 style="margin:0;">我的勋章</h2>
+      <div></div>
+    </div>
+    <div style="max-width:1200px;margin:0 auto;">
+      <div class="badge-stats-row">
+        <div class="badge-stat-card">
+          <div class="badge-stat-icon">💎</div>
+          <div>
+            <div class="badge-stat-label">当前积分</div>
+            <div class="badge-stat-value" id="currentPoints">0</div>
+          </div>
+        </div>
+        <div class="badge-stat-card">
+          <div class="badge-stat-icon">🏆</div>
+          <div>
+            <div class="badge-stat-label">已获得勋章</div>
+            <div class="badge-stat-value"><span id="earnedCount">0</span> / <span id="totalCount">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:24px;">
+        <h3 class="badge-section-title">📊 积分流水</h3>
+        <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:16px;">查看积分获取与消耗记录</p>
+        <div id="pointRecords" class="point-records-list">
+          <div style="text-align:center;color:var(--text-secondary);padding:32px;">加载中...</div>
+        </div>
+        <div id="pointRecordsMore" style="text-align:center;margin-top:12px;display:none;">
+          <button type="button" class="btn btn-ghost" id="loadMorePointsBtn" style="height:36px;padding:0 20px;font-size:0.8125rem;">加载更多</button>
+        </div>
+      </div>
+
+      <div class="badge-section-row" style="margin-top:32px;">
+        <div class="badge-grid-section">
+          <h3 class="badge-section-title">🎖️ 勋章墙</h3>
+          <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:20px;">鼠标悬停或点击勋章查看获得规则，已获得勋章点击可翻牌</p>
+          <div id="badgeGrid" class="badge-grid">
+            <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+          </div>
+        </div>
+        <div class="badge-leaderboard-section">
+          <h3 class="badge-section-title">🏆 积分排行榜</h3>
+          <div id="leaderboard" class="badge-leaderboard">
+            <div style="text-align:center;color:var(--text-secondary);padding:32px;">加载中...</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:32px;">
+        <h3 class="badge-section-title">📝 课程评教</h3>
+        <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:20px;">完成课程评教可获得积分和勋章</p>
+        <div id="evaluationSection">
+          <div style="text-align:center;color:var(--text-secondary);padding:32px;">加载中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="evaluateModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 id="evaluateModalTitle">课程评教</h2>
+      <div style="padding:0 32px 32px;">
+        <div class="form-group">
+          <label>评分</label>
+          <div class="rating-stars" id="ratingStars">
+            <span class="rating-star" data-value="1">★</span>
+            <span class="rating-star" data-value="2">★</span>
+            <span class="rating-star" data-value="3">★</span>
+            <span class="rating-star" data-value="4">★</span>
+            <span class="rating-star" data-value="5">★</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="evaluateComment">评论（选填）</label>
+          <textarea id="evaluateComment" placeholder="分享您对这门课程的看法..." rows="4" style="width:100%;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;color:var(--text-primary);font-size:0.9375rem;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelEvaluateBtn">取消</button>
+          <button type="button" class="btn btn-primary" id="submitEvaluateBtn">提交评教</button>
+        </div>
+      </div>
     </div>
   </div>
 

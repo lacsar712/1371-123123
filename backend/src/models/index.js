@@ -2,7 +2,6 @@ const path = require('path');
 const { Sequelize } = require('sequelize');
 const logger = require('../logger');
 
-// SQLite 存储路径，支持中文（SQLite 3 默认 UTF-8 编码）
 const SQLITE_PATH =
   process.env.SQLITE_PATH ||
   path.resolve(__dirname, '../../data/course.sqlite');
@@ -16,8 +15,6 @@ const sequelize = new Sequelize({
   logging: (msg) => logger.debug(msg),
 });
 
-// SQLite 3 默认使用 UTF-8 编码，完整支持中文
-
 const Admin = require('./Admin')(sequelize);
 const Student = require('./Student')(sequelize);
 const Teacher = require('./Teacher')(sequelize);
@@ -30,6 +27,10 @@ const Ticket = require('./Ticket')(sequelize);
 const TicketReply = require('./TicketReply')(sequelize);
 const Notification = require('./Notification')(sequelize);
 const CalendarEvent = require('./CalendarEvent')(sequelize);
+const Badge = require('./Badge')(sequelize);
+const StudentBadge = require('./StudentBadge')(sequelize);
+const PointRecord = require('./PointRecord')(sequelize);
+const CourseEvaluation = require('./CourseEvaluation')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Student.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
@@ -55,6 +56,19 @@ AttendanceRecord.belongsTo(Student, { foreignKey: 'studentId' });
 Ticket.hasMany(TicketReply, { foreignKey: 'ticketId', as: 'replies' });
 TicketReply.belongsTo(Ticket, { foreignKey: 'ticketId' });
 
+Student.hasMany(StudentBadge, { foreignKey: 'studentId' });
+StudentBadge.belongsTo(Student, { foreignKey: 'studentId' });
+Badge.hasMany(StudentBadge, { foreignKey: 'badgeId' });
+StudentBadge.belongsTo(Badge, { foreignKey: 'badgeId' });
+
+Student.hasMany(PointRecord, { foreignKey: 'studentId' });
+PointRecord.belongsTo(Student, { foreignKey: 'studentId' });
+
+Student.hasMany(CourseEvaluation, { foreignKey: 'studentId' });
+CourseEvaluation.belongsTo(Student, { foreignKey: 'studentId' });
+Course.hasMany(CourseEvaluation, { foreignKey: 'courseId' });
+CourseEvaluation.belongsTo(Course, { foreignKey: 'courseId' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -69,4 +83,8 @@ module.exports = {
   TicketReply,
   Notification,
   CalendarEvent,
+  Badge,
+  StudentBadge,
+  PointRecord,
+  CourseEvaluation,
 };

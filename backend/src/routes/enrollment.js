@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const router = express.Router();
 const { Course, Enrollment, LotteryEntry, sequelize } = require('../models');
+const { triggerEvent } = require('../badgeRules');
 const logger = require('../logger');
 
 router.get('/:id/courses', param('id').isInt({ min: 1 }).withMessage('无效的学生 ID'), async (req, res) => {
@@ -53,6 +54,7 @@ router.post('/:id/enroll', enrollValidators, async (req, res) => {
     const exists = await Enrollment.findOne({ where: { studentId, courseId } });
     if (exists) return res.status(400).json({ ok: false, message: '已选过该课程' });
     await Enrollment.create({ studentId, courseId });
+    triggerEvent('enroll', studentId, { courseName: course.name });
     return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, message: '选课成功' });
   } catch (e) {
     if (e.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ ok: false, message: '已选过该课程' });

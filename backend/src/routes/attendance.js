@@ -10,6 +10,7 @@ const {
   AttendanceRecord,
   sequelize,
 } = require('../models');
+const { triggerEvent } = require('../badgeRules');
 const logger = require('../logger');
 
 function generateCode() {
@@ -255,6 +256,8 @@ router.post(
         studentId,
         signInTime: now,
       });
+
+      triggerEvent('signin', studentId, { courseName: session.Course?.name });
 
       return res
         .set('Content-Type', 'application/json; charset=utf-8')

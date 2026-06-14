@@ -1422,6 +1422,363 @@
         document.querySelector('main.student-main').style.display = 'block';
       }
     };
+
+    initBadgePage();
+  }
+
+  let currentEvaluateCourseId = null;
+  let currentEvaluateRating = 0;
+
+  function showBadgePage() {
+    hideAllPages();
+    document.getElementById('badgePage').style.display = 'block';
+    loadBadgeData();
+    loadPointRecords();
+    loadLeaderboard();
+    loadEvaluations();
+  }
+
+  function hideBadgePage() {
+    document.getElementById('badgePage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  function hideAllPages() {
+    document.querySelector('main.student-main').style.display = 'none';
+    document.getElementById('ticketPage').style.display = 'none';
+    document.getElementById('ticketDetailPage').style.display = 'none';
+    document.getElementById('calendarPage').style.display = 'none';
+    document.getElementById('badgePage').style.display = 'none';
+  }
+
+  async function loadBadgeData() {
+    const { data } = await api(`/api/badges/${user.id}/badges`);
+    if (data && data.ok && data.data) {
+      const { badges, totalPoints } = data.data;
+      document.getElementById('currentPoints').textContent = totalPoints;
+      document.getElementById('earnedCount').textContent = badges.filter((b) => b.earned).length;
+      document.getElementById('totalCount').textContent = badges.length;
+      renderBadgeGrid(badges);
+    } else {
+      document.getElementById('badgeGrid').innerHTML =
+        '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+    }
+  }
+
+  function renderBadgeGrid(badges) {
+    const container = document.getElementById('badgeGrid');
+    if (!badges.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">暂无勋章</div>';
+      return;
+    }
+    container.innerHTML = badges
+      .map((b) => {
+        const colorVar = `--badge-color:${b.color};`;
+        const earnedClass = b.earned ? 'earned' : '';
+        const earnedTime = b.earnedAt ? formatDateTime(b.earnedAt) : '';
+        return `
+          <div class="badge-card ${earnedClass}" data-id="${b.id}" style="${colorVar}">
+            <div class="badge-tooltip">
+              <div class="badge-tooltip-title">${escapeHtml(b.name)}</div>
+              <div class="badge-tooltip-desc">${escapeHtml(b.description)}</div>
+              <div class="badge-tooltip-status ${b.earned ? 'earned' : 'locked'}">
+                ${b.earned ? '✓ 已获得 · ' + earnedTime : '🔒 未获得'}
+              </div>
+            </div>
+            <div class="badge-card-inner">
+              <div class="badge-card-front">
+                <div class="badge-icon">${b.icon}</div>
+                <div class="badge-name">${escapeHtml(b.name)}</div>
+              </div>
+              <div class="badge-card-back">
+                <div class="badge-back-icon">${b.icon}</div>
+                <div class="badge-back-name">${escapeHtml(b.name)}</div>
+                <div class="badge-back-desc">${escapeHtml(b.description)}</div>
+                <div class="badge-back-points">+${b.points} 积分</div>
+                ${b.earned ? `<div class="badge-back-earned">获得于 ${earnedTime}</div>` : ''}
+              </div>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    container.querySelectorAll('.badge-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        card.classList.toggle('flipped');
+      });
+    });
+  }
+
+  const ACTION_ICONS = {
+    enroll: '📚',
+    signin: '✅',
+    evaluate: '⭐',
+    lottery_won: '🎰',
+    badge_award: '🏅',
+  };
+
+  const ACTION_LABELS = {
+    enroll: '选课',
+    signin: '签到',
+    evaluate: '评教',
+    lottery_won: '中签',
+    badge_award: '获得勋章',
+  };
+
+  let pointRecordsPage = 0;
+  const POINT_RECORDS_PAGE_SIZE = 10;
+  let hasMorePointRecords = false;
+
+  async function loadPointRecords(append) {
+    const container = document.getElementById('pointRecords');
+    const moreBtn = document.getElementById('pointRecordsMore');
+    if (!append) {
+      pointRecordsPage = 0;
+    }
+    const { data } = await api(`/api/badges/${user.id}/points`);
+    if (data && data.ok && data.data) {
+      const { totalPoints, records } = data.data;
+      document.getElementById('currentPoints').textContent = totalPoints;
+      if (!records || !records.length) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:32px;">暂无积分记录</div>';
+        if (moreBtn) moreBtn.style.display = 'none';
+        return;
+      }
+      const start = append ? container.querySelectorAll('.point-record-item').length : 0;
+      const pageRecords = records.slice(start, start + POINT_RECORDS_PAGE_SIZE);
+      hasMorePointRecords = records.length > start + POINT_RECORDS_PAGE_SIZE;
+
+      const html = pageRecords.map((r) => {
+        const isPositive = r.points > 0;
+        const icon = ACTION_ICONS[r.action] || '💰';
+        const actionLabel = ACTION_LABELS[r.action] || r.action;
+        const timeStr = formatDateTime(r.createdAt);
+        return `
+          <div class="point-record-item">
+            <div class="point-record-icon ${isPositive ? 'positive' : 'negative'}">${icon}</div>
+            <div class="point-record-info">
+              <div class="point-record-action">${escapeHtml(actionLabel)}</div>
+              <div class="point-record-detail">${escapeHtml(r.actionDetail || '')}</div>
+            </div>
+            <div class="point-record-value ${isPositive ? 'positive' : 'negative'}">${isPositive ? '+' : ''}${r.points}</div>
+            <div class="point-record-time">${timeStr}</div>
+          </div>`;
+      }).join('');
+
+      if (append) {
+        container.insertAdjacentHTML('beforeend', html);
+      } else {
+        container.innerHTML = html;
+      }
+
+      if (moreBtn) {
+        moreBtn.style.display = hasMorePointRecords ? 'inline-flex' : 'none';
+      }
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px;">加载失败</div>';
+      if (moreBtn) moreBtn.style.display = 'none';
+    }
+  }
+
+  async function loadLeaderboard() {
+    const { data } = await api('/api/badges/leaderboard?limit=10');
+    const container = document.getElementById('leaderboard');
+    if (data && data.ok && Array.isArray(data.data)) {
+      const list = data.data;
+      if (!list.length) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:32px;">暂无排行数据</div>';
+        return;
+      }
+      container.innerHTML = list
+        .map((item) => {
+          const isMe = item.studentId === user.id;
+          return `
+            <div class="leaderboard-item" style="${isMe ? 'background:rgba(99,102,241,0.08);' : ''}">
+              <div class="leaderboard-rank rank-${item.rank}">${item.rank}</div>
+              <div class="leaderboard-info">
+                <div class="leaderboard-name">${escapeHtml(item.studentName)}${isMe ? ' (我)' : ''}</div>
+                <div class="leaderboard-no">${escapeHtml(item.studentNo)}</div>
+              </div>
+              <div class="leaderboard-points">${item.totalPoints} 💎</div>
+            </div>`;
+        })
+        .join('');
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px;">加载失败</div>';
+    }
+  }
+
+  async function loadEvaluations() {
+    const { data } = await api(`/api/badges/${user.id}/courses-to-evaluate`);
+    const container = document.getElementById('evaluationSection');
+    if (data && data.ok && Array.isArray(data.data)) {
+      const list = data.data;
+      if (!list.length) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:32px;">暂无课程可评教</div>';
+        return;
+      }
+      container.innerHTML =
+        '<div class="evaluation-list">' +
+        list
+          .map((c) => `
+            <div class="evaluation-card">
+              <div class="evaluation-course-code">${escapeHtml(c.code)}</div>
+              <div class="evaluation-course-name">${escapeHtml(c.name)}</div>
+              <div class="evaluation-status ${c.evaluated ? 'done' : 'pending'}">
+                ${c.evaluated ? '✓ 已完成评教' : '⏳ 待评教'}
+              </div>
+              ${c.evaluated
+                ? ''
+                : `<button type="button" class="btn btn-primary btn-sm" data-id="${c.id}" style="height:36px;padding:0 20px;font-size:0.8125rem;width:100%;">
+                    去评教
+                   </button>`}
+            </div>`)
+          .join('') +
+        '</div>';
+
+      container.querySelectorAll('.btn[data-id]').forEach((btn) => {
+        btn.addEventListener('click', () => openEvaluateModal(parseInt(btn.dataset.id, 10)));
+      });
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px;">加载失败</div>';
+    }
+  }
+
+  function openEvaluateModal(courseId) {
+    currentEvaluateCourseId = courseId;
+    currentEvaluateRating = 0;
+    document.querySelectorAll('#ratingStars .rating-star').forEach((s) => s.classList.remove('active'));
+    document.getElementById('evaluateComment').value = '';
+    document.getElementById('evaluateModal').classList.add('show');
+  }
+
+  function closeEvaluateModal() {
+    document.getElementById('evaluateModal').classList.remove('show');
+    currentEvaluateCourseId = null;
+    currentEvaluateRating = 0;
+  }
+
+  async function submitEvaluation() {
+    if (currentEvaluateRating < 1 || currentEvaluateRating > 5) {
+      showToast('请选择评分', 'error');
+      return;
+    }
+    const comment = document.getElementById('evaluateComment').value.trim();
+    const btn = document.getElementById('submitEvaluateBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+    try {
+      const { data } = await api(`/api/badges/${user.id}/evaluate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          courseId: currentEvaluateCourseId,
+          rating: currentEvaluateRating,
+          comment,
+        }),
+      });
+      if (data && data.ok) {
+        showToast('评教成功，积分已增加', 'success');
+        closeEvaluateModal();
+        loadBadgeData();
+        loadEvaluations();
+      } else {
+        showToast((data && data.message) || '评教失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '提交评教';
+    }
+  }
+
+  function initBadgePage() {
+    const _origShowTicketPage = showTicketPage;
+    showTicketPage = function () {
+      hideAllPages();
+      document.getElementById('ticketPage').style.display = 'block';
+      loadTicketList();
+    };
+
+    const _origHideTicketPage = hideTicketPage;
+    hideTicketPage = function () {
+      document.getElementById('ticketPage').style.display = 'none';
+      document.getElementById('ticketDetailPage').style.display = 'none';
+      const calPage = document.getElementById('calendarPage');
+      const badgePage = document.getElementById('badgePage');
+      if (calPage && calPage.style.display === 'block') {
+        calPage.style.display = 'block';
+      } else if (badgePage && badgePage.style.display === 'block') {
+        badgePage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const _origShowCalendarPage = showCalendarPage;
+    showCalendarPage = function () {
+      hideAllPages();
+      const calPage = document.getElementById('calendarPage');
+      calPage.style.display = 'block';
+      if (!calendarInstance) {
+        calendarInstance = new Calendar('#calendarContainer', {
+          view: 'month',
+          currentDate: new Date(),
+          events: [],
+          canCreateCustom: true,
+          onCellClick: onCalendarCellClick,
+          onEventClick: onCalendarEventClick,
+          onDateChange: () => loadCalendarEvents(),
+          onViewChange: () => loadCalendarEvents(),
+        });
+      } else {
+        calendarInstance.setDate(new Date());
+      }
+      loadCalendarEvents();
+    };
+
+    const _origHideCalendarPage = hideCalendarPage;
+    hideCalendarPage = function () {
+      document.getElementById('calendarPage').style.display = 'none';
+      const badgePage = document.getElementById('badgePage');
+      if (badgePage && badgePage.style.display === 'block') {
+        badgePage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    document.getElementById('badgeBtn').addEventListener('click', showBadgePage);
+    document.getElementById('badgeBackBtn').addEventListener('click', hideBadgePage);
+    document.getElementById('loadMorePointsBtn').addEventListener('click', () => loadPointRecords(true));
+    document.getElementById('cancelEvaluateBtn').addEventListener('click', closeEvaluateModal);
+    document.getElementById('submitEvaluateBtn').addEventListener('click', submitEvaluation);
+    document.getElementById('evaluateModal').addEventListener('click', (e) => {
+      if (e.target.id === 'evaluateModal') closeEvaluateModal();
+    });
+
+    document.querySelectorAll('#ratingStars .rating-star').forEach((star) => {
+      const value = parseInt(star.dataset.value, 10);
+      star.addEventListener('click', () => {
+        currentEvaluateRating = value;
+        document.querySelectorAll('#ratingStars .rating-star').forEach((s) => {
+          s.classList.toggle('active', parseInt(s.dataset.value, 10) <= value);
+        });
+      });
+      star.addEventListener('mouseenter', () => {
+        document.querySelectorAll('#ratingStars .rating-star').forEach((s) => {
+          s.classList.toggle('active', parseInt(s.dataset.value, 10) <= value);
+        });
+      });
+    });
+
+    document.getElementById('ratingStars').addEventListener('mouseleave', () => {
+      document.querySelectorAll('#ratingStars .rating-star').forEach((s) => {
+        s.classList.toggle('active', parseInt(s.dataset.value, 10) <= currentEvaluateRating);
+      });
+    });
+
+    window.hideTicketPage = hideTicketPage;
   }
 
   initWithCalendar();

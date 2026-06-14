@@ -105,3 +105,52 @@ CREATE TABLE IF NOT EXISTS calendar_event (
 
 CREATE INDEX IF NOT EXISTS idx_calendar_event_user ON calendar_event(user_id, user_role);
 CREATE INDEX IF NOT EXISTS idx_calendar_event_time ON calendar_event(start_time, end_time);
+
+CREATE TABLE IF NOT EXISTS badge (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL,
+  icon TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#6366f1',
+  rule_type TEXT NOT NULL,
+  rule_config TEXT,
+  points INTEGER NOT NULL DEFAULT 10,
+  created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS student_badge (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  badge_id INTEGER NOT NULL,
+  earned_at TEXT DEFAULT (datetime('now', 'localtime')),
+  UNIQUE(student_id, badge_id),
+  FOREIGN KEY (student_id) REFERENCES student(id),
+  FOREIGN KEY (badge_id) REFERENCES badge(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_badge_student ON student_badge(student_id);
+
+CREATE TABLE IF NOT EXISTS point_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  action_detail TEXT,
+  points INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY (student_id) REFERENCES student(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_point_record_student ON point_record(student_id);
+CREATE INDEX IF NOT EXISTS idx_point_record_created ON point_record(created_at);
+
+CREATE TABLE IF NOT EXISTS course_evaluation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  course_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL DEFAULT 5,
+  comment TEXT(500),
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  UNIQUE(student_id, course_id),
+  FOREIGN KEY (student_id) REFERENCES student(id),
+  FOREIGN KEY (course_id) REFERENCES course(id)
+);
