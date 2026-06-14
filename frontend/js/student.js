@@ -1424,6 +1424,7 @@
     };
 
     initBadgePage();
+    initForumPage();
   }
 
   let currentEvaluateCourseId = null;
@@ -1451,6 +1452,8 @@
     document.getElementById('badgePage').style.display = 'none';
     document.getElementById('examPage').style.display = 'none';
     document.getElementById('gradePage').style.display = 'none';
+    document.getElementById('forumListPage').style.display = 'none';
+    document.getElementById('forumDetailPage').style.display = 'none';
     if (examCountdownTimer) {
       clearInterval(examCountdownTimer);
       examCountdownTimer = null;
@@ -1988,6 +1991,896 @@
       btn.disabled = false;
       btn.textContent = '提交评教';
     }
+  }
+
+  // ========== 讨论区 ==========
+  let forumPage = 1;
+  let forumPageSize = 10;
+  let forumSort = 'active';
+  let forumCourseId = '';
+  let forumKeyword = '';
+  let currentForumPostId = null;
+  let forumCourses = [];
+
+  function showForumListPage() {
+    hideAllPages();
+    document.getElementById('forumListPage').style.display = 'block';
+    loadForumCourses();
+    loadForumPostList();
+  }
+
+  function hideForumListPage() {
+    document.getElementById('forumListPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  function showForumDetailPage(postId) {
+    currentForumPostId = postId;
+    hideAllPages();
+    document.getElementById('forumDetailPage').style.display = 'block';
+    loadForumPostDetail(postId);
+    loadForumComments(postId);
+  }
+
+  function hideForumDetailPage() {
+    document.getElementById('forumDetailPage').style.display = 'none';
+    document.getElementById('forumListPage').style.display = 'block';
+    currentForumPostId = null;
+  }
+
+  async function loadForumCourses() {
+    const filter = document.getElementById('forumCourseFilter');
+    const select = document.getElementById('postCourse');
+    if (!filter || !select) return;
+    try {
+      const { data } = await api('/api/courses');
+      if (data && data.ok && Array.isArray(data.data)) {
+        forumCourses = data.data;
+        const options = '<option value="">全部课程</option>' +
+          data.data.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+        filter.innerHTML = options;
+        const postOptions = '<option value="">不归属任何课程</option>' +
+          data.data.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+        select.innerHTML = postOptions;
+        if (forumCourseId) {
+          filter.value = forumCourseId;
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function loadForumPostList() {
+    const container = document.getElementById('forumPostList');
+    const params = new URLSearchParams({
+      page: forumPage,
+      pageSize: forumPageSize,
+      sort: forumSort,
+    });
+    if (forumCourseId) params.append('courseId', forumCourseId);
+    if (forumKeyword) params.append('keyword', forumKeyword);
+
+    try {
+      const { data } = await api('/api/forum/posts?' + params.toString());
+      if (data && data.ok && data.data) {
+        const { list, total, totalPages } = data.data;
+        if (!list.length) {
+          container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">暂无帖子，快来发布第一篇吧！</div>';
+        } else {
+          container.innerHTML = list.map((p) => {
+            const course = p.course || null;
+            const isMine = p.authorId === user.id && p.authorRole === 'student';
+            return `
+              <div class="forum-post-card" data-id="${p.id}">
+                <div class="forum-post-card-header">
+                  <div class="forum-post-meta-left">
+                    ${p.isPinned ? '<span class="forum-tag forum-tag-pin">📌 置顶</span>' : ''}
+                    ${course ? `<span class="forum-tag forum-tag-course">📘 ${escapeHtml(course.name)}</span>` : ''}
+                    <span class="forum-post-author">${escapeHtml(p.authorName)}</span>
+                    <span class="forum-post-time">${formatDateTime(p.createdAt)}</span>
+                  </div>
+                  <div class="forum-post-stats">
+                    <span>👁 ${p.viewCount ?? 0}</span>
+                    <span>👍 ${p.likeCount ?? 0}</span>
+                    <span>💬 ${p.commentCount ?? 0}</span>
+                    ${isMine ? `<button type="button" class="btn btn-danger btn-sm forum-delete-btn" data-id="${p.id}" style="height:28px;padding:0 12px;font-size:0.75rem;">删除</button>` : ''}
+                  </div>
+                </div>
+                <div class="forum-post-card-title">${escapeHtml(p.title)}</div>
+              </div>`;
+          }).join('');
+
+          container.querySelectorAll('.forum-post-card[data-id]').forEach((card) => {
+            card.addEventListener('click', (e) => {
+              if (e.target.classList.contains('forum-delete-btn')) return;
+              showForumDetailPage(parseInt(card.dataset.id, 10));
+            });
+          });
+
+          container.querySelectorAll('.forum-delete-btn').forEach((btn) => {
+            btn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const ok = await showConfirm('确定删除该帖子？');
+              if (!ok) return;
+              const id = parseInt(btn.dataset.id, 10);
+              try {
+                const r = await api('/api/forum/posts/' + id, {
+                  method: 'DELETE',
+                  body: JSON.stringify({ userId: user.id, userRole: 'student' }),
+                });
+                if (r.data && r.data.ok) {
+                  showToast('删除成功', 'success');
+                  loadForumPostList();
+                } else {
+                  showToast((r.data && r.data.message) || '删除失败', 'error');
+                }
+              } catch (_) {
+                showToast('网络错误', 'error');
+              }
+            });
+          });
+        }
+        renderForumPagination(total, totalPages);
+      } else {
+        container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">网络错误</div>';
+    }
+  }
+
+  function renderForumPagination(total, totalPages) {
+    const container = document.getElementById('forumPagination');
+    if (!container) return;
+    if (totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${forumPage === 1 ? 'disabled' : ''} data-page="prev">上一页</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      html += `<button class="page-btn ${i === forumPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="page-btn" ${forumPage === totalPages ? 'disabled' : ''} data-page="next">下一页</button>`;
+    html += '</div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (page === 'prev' && forumPage > 1) {
+          forumPage--;
+        } else if (page === 'next' && forumPage < totalPages) {
+          forumPage++;
+        } else if (page !== 'prev' && page !== 'next') {
+          forumPage = parseInt(page, 10);
+        }
+        loadForumPostList();
+      });
+    });
+  }
+
+  async function loadForumPostDetail(postId) {
+    const container = document.getElementById('forumPostDetail');
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>';
+    try {
+      const { data } = await api('/api/forum/posts/' + postId);
+      if (data && data.ok && data.data) {
+        const post = data.data;
+        const course = post.course || null;
+        document.getElementById('forumDetailTitle').textContent = post.title;
+        const isMine = post.authorId === user.id && post.authorRole === 'student';
+
+        const likeStatus = await api(`/api/forum/posts/${postId}/like-status?userId=${user.id}&userRole=student`);
+        const liked = likeStatus.data && likeStatus.data.ok && likeStatus.data.data ? likeStatus.data.data.liked : false;
+        const likeCount = likeStatus.data && likeStatus.data.ok && likeStatus.data.data ? likeStatus.data.data.likeCount : post.likeCount;
+
+        container.innerHTML = `
+          <div class="forum-detail-header">
+            <div class="forum-detail-tags">
+              ${post.isPinned ? '<span class="forum-tag forum-tag-pin">📌 置顶</span>' : ''}
+              ${course ? `<span class="forum-tag forum-tag-course">📘 ${escapeHtml(course.name)}</span>` : ''}
+            </div>
+            <h2 class="forum-detail-title">${escapeHtml(post.title)}</h2>
+            <div class="forum-detail-meta">
+              <span>作者：${escapeHtml(post.authorName)}</span>
+              <span>发布时间：${formatDateTime(post.createdAt)}</span>
+              <span>👁 ${post.viewCount ?? 0} 浏览</span>
+              <span>💬 ${post.commentCount ?? 0} 评论</span>
+            </div>
+          </div>
+          <div class="forum-detail-content">${post.content}</div>
+          <div class="forum-detail-actions">
+            <button type="button" class="btn ${liked ? 'btn-primary' : 'btn-ghost'} forum-like-btn" data-id="${post.id}">
+              ${liked ? '❤️ 已点赞' : '🤍 点赞'} <span class="forum-like-count">${likeCount}</span>
+            </button>
+            ${isMine ? `<button type="button" class="btn btn-danger forum-delete-post-btn" data-id="${post.id}">删除帖子</button>` : ''}
+          </div>
+        `;
+
+        const likeBtn = container.querySelector('.forum-like-btn');
+        if (likeBtn) {
+          likeBtn.addEventListener('click', async () => {
+            try {
+              const r = await api('/api/forum/posts/' + postId + '/like', {
+                method: 'POST',
+                body: JSON.stringify({ userId: user.id, userRole: 'student' }),
+              });
+              if (r.data && r.data.ok && r.data.data) {
+                const { liked: newLiked, likeCount: newCount } = r.data.data;
+                likeBtn.innerHTML = `${newLiked ? '❤️ 已点赞' : '🤍 点赞'} <span class="forum-like-count">${newCount}</span>`;
+                likeBtn.classList.toggle('btn-primary', newLiked);
+                likeBtn.classList.toggle('btn-ghost', !newLiked);
+              }
+            } catch (_) {
+              showToast('网络错误', 'error');
+            }
+          });
+        }
+
+        const deleteBtn = container.querySelector('.forum-delete-post-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', async () => {
+            const ok = await showConfirm('确定删除该帖子？');
+            if (!ok) return;
+            try {
+              const r = await api('/api/forum/posts/' + postId, {
+                method: 'DELETE',
+                body: JSON.stringify({ userId: user.id, userRole: 'student' }),
+              });
+              if (r.data && r.data.ok) {
+                showToast('删除成功', 'success');
+                hideForumDetailPage();
+                loadForumPostList();
+              } else {
+                showToast((r.data && r.data.message) || '删除失败', 'error');
+              }
+            } catch (_) {
+              showToast('网络错误', 'error');
+            }
+          });
+        }
+      } else {
+        container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败或帖子已被删除</div>';
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">网络错误</div>';
+    }
+  }
+
+  async function loadForumComments(postId) {
+    const container = document.getElementById('forumCommentList');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:24px;">加载中...</div>';
+    try {
+      const { data } = await api('/api/forum/posts/' + postId + '/comments');
+      if (data && data.ok && Array.isArray(data.data)) {
+        const comments = data.data;
+        if (!comments.length) {
+          container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:24px;">暂无评论，快来抢沙发吧！</div>';
+          return;
+        }
+        container.innerHTML = renderCommentTree(comments, postId, null);
+        bindCommentEvents(container, postId);
+      } else {
+        container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px;">加载失败</div>';
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px;">网络错误</div>';
+    }
+  }
+
+  function renderCommentTree(comments, postId, parentId) {
+    return comments.map((c) => {
+      const isMine = c.authorId === user.id && c.authorRole === 'student';
+      const replyTo = c.replyToName ? `<span class="forum-reply-to">@${escapeHtml(c.replyToName)}</span>` : '';
+      return `
+        <div class="forum-comment-item" data-id="${c.id}" data-parent="${parentId || ''}">
+          <div class="forum-comment-header">
+            <span class="forum-comment-author">${escapeHtml(c.authorName)}</span>
+            <span class="forum-comment-time">${formatDateTime(c.createdAt)}</span>
+            <div class="forum-comment-actions">
+              <button type="button" class="forum-reply-btn" data-id="${c.id}" data-name="${escapeHtml(c.authorName)}">回复</button>
+              ${isMine ? `<button type="button" class="forum-comment-delete-btn" data-id="${c.id}">删除</button>` : ''}
+            </div>
+          </div>
+          <div class="forum-comment-content">${replyTo} ${escapeHtml(c.content).replace(/\n/g, '<br>')}</div>
+          ${c.replies && c.replies.length ? `<div class="forum-comment-replies">${renderCommentTree(c.replies, postId, c.id)}</div>` : ''}
+          <div class="forum-reply-form" style="display:none;margin-top:12px;">
+            <textarea class="forum-reply-input" placeholder="回复 ${escapeHtml(c.authorName)}..." rows="2"></textarea>
+            <div style="text-align:right;margin-top:8px;">
+              <button type="button" class="btn btn-ghost btn-sm forum-cancel-reply" style="height:32px;padding:0 16px;font-size:0.8125rem;margin-right:8px;">取消</button>
+              <button type="button" class="btn btn-primary btn-sm forum-submit-reply" data-parent="${c.id}" data-reply-to="${c.id}" data-name="${escapeHtml(c.authorName)}" style="height:32px;padding:0 16px;font-size:0.8125rem;">发送</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function bindCommentEvents(container, postId) {
+    container.querySelectorAll('.forum-reply-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.forum-comment-item');
+        const form = item.querySelector('.forum-reply-form');
+        container.querySelectorAll('.forum-reply-form').forEach((f) => {
+          if (f !== form) f.style.display = 'none';
+        });
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        if (form.style.display === 'block') {
+          form.querySelector('.forum-reply-input').focus();
+        }
+      });
+    });
+
+    container.querySelectorAll('.forum-cancel-reply').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.forum-reply-form').style.display = 'none';
+      });
+    });
+
+    container.querySelectorAll('.forum-submit-reply').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const form = btn.closest('.forum-reply-form');
+        const textarea = form.querySelector('.forum-reply-input');
+        const content = textarea.value.trim();
+        if (!content) {
+          showToast('请输入回复内容', 'error');
+          return;
+        }
+        const parentId = parseInt(btn.dataset.parent, 10);
+        const replyToId = parseInt(btn.dataset.replyTo, 10);
+        const replyToName = btn.dataset.name;
+        btn.disabled = true;
+        btn.textContent = '发送中...';
+        try {
+          const r = await api('/api/forum/posts/' + postId + '/comments', {
+            method: 'POST',
+            body: JSON.stringify({
+              content,
+              authorId: user.id,
+              authorRole: 'student',
+              authorName: user.name,
+              parentId,
+              replyToId,
+              replyToName,
+            }),
+          });
+          if (r.data && r.data.ok) {
+            showToast('回复成功', 'success');
+            loadForumComments(postId);
+          } else {
+            showToast((r.data && r.data.message) || '回复失败', 'error');
+          }
+        } catch (_) {
+          showToast('网络错误', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '发送';
+        }
+      });
+    });
+
+    container.querySelectorAll('.forum-comment-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const ok = await showConfirm('确定删除该评论？');
+        if (!ok) return;
+        const id = parseInt(btn.dataset.id, 10);
+        try {
+          const r = await api('/api/forum/comments/' + id, {
+            method: 'DELETE',
+            body: JSON.stringify({ userId: user.id, userRole: 'student' }),
+          });
+          if (r.data && r.data.ok) {
+            showToast('删除成功', 'success');
+            loadForumComments(postId);
+          } else {
+            showToast((r.data && r.data.message) || '删除失败', 'error');
+          }
+        } catch (_) {
+          showToast('网络错误', 'error');
+        }
+      });
+    });
+  }
+
+  function openNewPostModal() {
+    document.getElementById('postTitle').value = '';
+    document.getElementById('postContent').value = '';
+    document.getElementById('postCourse').value = '';
+    document.getElementById('newPostModal').classList.add('show');
+  }
+
+  function closeNewPostModal() {
+    document.getElementById('newPostModal').classList.remove('show');
+  }
+
+  async function submitPost() {
+    const title = document.getElementById('postTitle').value.trim();
+    const content = document.getElementById('postContent').value.trim();
+    const courseId = document.getElementById('postCourse').value;
+
+    if (!title) {
+      showToast('请输入标题', 'error');
+      return;
+    }
+    if (!content) {
+      showToast('请输入正文', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('submitPostBtn');
+    btn.disabled = true;
+    btn.textContent = '发布中...';
+
+    try {
+      const { data } = await api('/api/forum/posts', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          content,
+          authorId: user.id,
+          authorRole: 'student',
+          authorName: user.name,
+          courseId: courseId ? parseInt(courseId, 10) : null,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('发布成功', 'success');
+        closeNewPostModal();
+        forumPage = 1;
+        loadForumPostList();
+      } else {
+        showToast((data && data.message) || '发布失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '发布';
+    }
+  }
+
+  async function submitForumComment() {
+    const content = document.getElementById('forumCommentInput').value.trim();
+    if (!content) {
+      showToast('请输入评论内容', 'error');
+      return;
+    }
+    if (!currentForumPostId) return;
+
+    const btn = document.getElementById('submitForumCommentBtn');
+    btn.disabled = true;
+    btn.textContent = '发表中...';
+
+    try {
+      const { data } = await api('/api/forum/posts/' + currentForumPostId + '/comments', {
+        method: 'POST',
+        body: JSON.stringify({
+          content,
+          authorId: user.id,
+          authorRole: 'student',
+          authorName: user.name,
+        }),
+      });
+
+      if (data && data.ok) {
+        showToast('评论成功', 'success');
+        document.getElementById('forumCommentInput').value = '';
+        loadForumComments(currentForumPostId);
+        loadForumPostDetail(currentForumPostId);
+      } else {
+        showToast((data && data.message) || '评论失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '发表评论';
+    }
+  }
+
+  function initForumPage() {
+    const origHideTicketPage = hideTicketPage;
+    hideTicketPage = function () {
+      document.getElementById('ticketPage').style.display = 'none';
+      document.getElementById('ticketDetailPage').style.display = 'none';
+      const calPage = document.getElementById('calendarPage');
+      const badgePage = document.getElementById('badgePage');
+      const examPage = document.getElementById('examPage');
+      const gradePage = document.getElementById('gradePage');
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      if (calPage && calPage.style.display === 'block') {
+        calPage.style.display = 'block';
+      } else if (badgePage && badgePage.style.display === 'block') {
+        badgePage.style.display = 'block';
+      } else if (examPage && examPage.style.display === 'block') {
+        examPage.style.display = 'block';
+      } else if (gradePage && gradePage.style.display === 'block') {
+        gradePage.style.display = 'block';
+      } else if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const origHideBadgePage = hideBadgePage;
+    hideBadgePage = function () {
+      document.getElementById('badgePage').style.display = 'none';
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const origHideCalendarPage = hideCalendarPage;
+    hideCalendarPage = function () {
+      document.getElementById('calendarPage').style.display = 'none';
+      const badgePage = document.getElementById('badgePage');
+      const examPage = document.getElementById('examPage');
+      const gradePage = document.getElementById('gradePage');
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      if (badgePage && badgePage.style.display === 'block') {
+        badgePage.style.display = 'block';
+      } else if (examPage && examPage.style.display === 'block') {
+        examPage.style.display = 'block';
+      } else if (gradePage && gradePage.style.display === 'block') {
+        gradePage.style.display = 'block';
+      } else if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const origHideExamPage = hideExamPage;
+    hideExamPage = function () {
+      document.getElementById('examPage').style.display = 'none';
+      if (examCountdownTimer) {
+        clearInterval(examCountdownTimer);
+        examCountdownTimer = null;
+      }
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const origHideGradePage = hideGradePage;
+    hideGradePage = function () {
+      document.getElementById('gradePage').style.display = 'none';
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    document.getElementById('forumBtn').addEventListener('click', showForumListPage);
+    document.getElementById('forumBackBtn').addEventListener('click', hideForumListPage);
+    document.getElementById('forumDetailBackBtn').addEventListener('click', hideForumDetailPage);
+    document.getElementById('newPostBtn').addEventListener('click', openNewPostModal);
+    document.getElementById('cancelPostBtn').addEventListener('click', closeNewPostModal);
+    document.getElementById('submitPostBtn').addEventListener('click', submitPost);
+    document.getElementById('submitForumCommentBtn').addEventListener('click', submitForumComment);
+    document.getElementById('newPostModal').addEventListener('click', (e) => {
+      if (e.target.id === 'newPostModal') closeNewPostModal();
+    });
+
+    document.getElementById('forumCourseFilter').addEventListener('change', (e) => {
+      forumCourseId = e.target.value;
+      forumPage = 1;
+      loadForumPostList();
+    });
+
+    const kwInput = document.getElementById('forumKeyword');
+    if (kwInput) {
+      let searchTimer = null;
+      kwInput.addEventListener('input', () => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          forumKeyword = kwInput.value.trim();
+          forumPage = 1;
+          loadForumPostList();
+        }, 300);
+      });
+      kwInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          forumKeyword = kwInput.value.trim();
+          forumPage = 1;
+          loadForumPostList();
+        }
+      });
+    }
+
+    document.querySelectorAll('.forum-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.forum-tabs .tab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        forumSort = btn.dataset.sort || 'active';
+        forumPage = 1;
+        loadForumPostList();
+      });
+    });
+
+    const forumStyle = document.createElement('style');
+    forumStyle.textContent = `
+      .forum-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+      .forum-toolbar-left {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        flex: 1;
+      }
+      .forum-tabs {
+        display: flex;
+        gap: 8px;
+      }
+      .forum-post-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .forum-post-card {
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: var(--radius);
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .forum-post-card:hover {
+        border-color: var(--accent-start);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+      }
+      .forum-post-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .forum-post-meta-left {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .forum-post-stats {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        color: var(--text-secondary);
+        font-size: 0.8125rem;
+      }
+      .forum-post-author {
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 0.875rem;
+      }
+      .forum-post-time {
+        color: var(--text-secondary);
+        font-size: 0.8125rem;
+      }
+      .forum-post-card-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.5;
+      }
+      .forum-tag {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .forum-tag-pin {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+      }
+      .forum-tag-course {
+        background: rgba(59, 130, 246, 0.15);
+        color: #60a5fa;
+      }
+      .forum-detail-header {
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--bg-glass-border);
+        margin-bottom: 20px;
+      }
+      .forum-detail-tags {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .forum-detail-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 12px 0;
+      }
+      .forum-detail-meta {
+        display: flex;
+        gap: 20px;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        flex-wrap: wrap;
+      }
+      .forum-detail-content {
+        color: var(--text-primary);
+        line-height: 1.8;
+        font-size: 0.9375rem;
+        padding: 8px 0;
+        word-break: break-word;
+      }
+      .forum-detail-content img {
+        max-width: 100%;
+        border-radius: 8px;
+      }
+      .forum-detail-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--bg-glass-border);
+      }
+      .forum-like-count {
+        margin-left: 4px;
+      }
+      .forum-post-detail {
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: var(--radius);
+        padding: 24px;
+      }
+      .forum-comment-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 16px;
+      }
+      .forum-comment-input {
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 20px;
+      }
+      .forum-comment-input textarea {
+        width: 100%;
+        padding: 12px 16px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: 12px;
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+        resize: vertical;
+        min-height: 80px;
+        margin-bottom: 12px;
+        font-family: inherit;
+      }
+      .forum-comment-input textarea:focus {
+        outline: none;
+        border-color: var(--accent-start);
+      }
+      .forum-comment-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .forum-comment-item {
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: var(--radius);
+        padding: 16px 20px;
+      }
+      .forum-comment-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .forum-comment-author {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+      }
+      .forum-comment-time {
+        color: var(--text-secondary);
+        font-size: 0.8125rem;
+      }
+      .forum-comment-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 12px;
+      }
+      .forum-comment-actions button {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 0.8125rem;
+        padding: 0;
+        transition: color 0.2s;
+      }
+      .forum-comment-actions button:hover {
+        color: var(--accent-start);
+      }
+      .forum-comment-content {
+        color: var(--text-primary);
+        line-height: 1.6;
+        font-size: 0.9375rem;
+        word-break: break-word;
+      }
+      .forum-reply-to {
+        color: var(--accent-start);
+        font-weight: 500;
+      }
+      .forum-comment-replies {
+        margin-top: 12px;
+        margin-left: 24px;
+        padding-left: 16px;
+        border-left: 2px solid var(--bg-glass-border);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .forum-comment-replies .forum-comment-item {
+        padding: 12px 16px;
+      }
+      .forum-reply-input {
+        width: 100%;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--bg-glass-border);
+        border-radius: 10px;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        resize: vertical;
+        min-height: 60px;
+        font-family: inherit;
+      }
+      .forum-reply-input:focus {
+        outline: none;
+        border-color: var(--accent-start);
+      }
+    `;
+    document.head.appendChild(forumStyle);
   }
 
   function initBadgePage() {

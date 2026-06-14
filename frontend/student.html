@@ -23,6 +23,9 @@
       <button type="button" class="btn btn-ghost" id="badgeBtn" style="margin-right:12px;">
         🏅 我的勋章
       </button>
+      <button type="button" class="btn btn-ghost" id="forumBtn" style="margin-right:12px;">
+        💬 讨论区
+      </button>
       <button type="button" class="btn btn-ghost" id="ticketBtn" style="margin-right:12px;position:relative;">
         📩 我的工单
         <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
@@ -161,6 +164,81 @@
     <div id="ticketReplySection" class="ticket-reply-section" style="display:none;">
       <textarea id="replyContent" placeholder="输入您的回复..." rows="3"></textarea>
       <button type="button" class="btn btn-primary" id="submitReplyBtn">提交回复</button>
+    </div>
+  </div>
+
+  <div id="forumListPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header" style="max-width:1000px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="forumBackBtn">← 返回</button>
+      <h2 style="margin:0;">课程讨论区</h2>
+      <button type="button" class="btn btn-primary" id="newPostBtn">＋ 发帖</button>
+    </div>
+    <div style="max-width:1000px;margin:0 auto;">
+      <div class="forum-toolbar">
+        <div class="forum-toolbar-left">
+          <select id="forumCourseFilter" style="height:40px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;cursor:pointer;appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:44px;min-width:180px;">
+            <option value="">全部课程</option>
+          </select>
+          <div style="position:relative;flex:1;max-width:360px;">
+            <input type="text" id="forumKeyword" placeholder="搜索帖子标题或内容" style="width:100%;height:40px;padding:0 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:12px;color:var(--text-primary);font-size:0.9375rem;" />
+          </div>
+        </div>
+        <div class="forum-tabs">
+          <button type="button" class="tab-btn active" data-sort="active">最近活跃</button>
+          <button type="button" class="tab-btn" data-sort="latest">最新</button>
+          <button type="button" class="tab-btn" data-sort="hottest">最热</button>
+        </div>
+      </div>
+      <div id="forumPostList" class="forum-post-list">
+        <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+      </div>
+      <div id="forumPagination" style="margin-top:24px;text-align:center;"></div>
+    </div>
+  </div>
+
+  <div id="forumDetailPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header" style="max-width:900px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="forumDetailBackBtn">← 返回列表</button>
+      <h2 style="margin:0;" id="forumDetailTitle">帖子详情</h2>
+      <div></div>
+    </div>
+    <div style="max-width:900px;margin:0 auto;">
+      <div id="forumPostDetail" class="forum-post-detail">
+        <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+      </div>
+      <div style="margin-top:32px;">
+        <h3 class="forum-comment-title">评论区</h3>
+        <div class="forum-comment-input">
+          <textarea id="forumCommentInput" placeholder="写下你的评论..." rows="3"></textarea>
+          <button type="button" class="btn btn-primary" id="submitForumCommentBtn">发表评论</button>
+        </div>
+        <div id="forumCommentList" class="forum-comment-list">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="newPostModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>发布新帖</h2>
+      <div class="form-group">
+        <label for="postTitle">标题</label>
+        <input type="text" id="postTitle" placeholder="请输入帖子标题" maxlength="200" />
+      </div>
+      <div class="form-group">
+        <label for="postCourse">归属课程（可选）</label>
+        <select id="postCourse">
+          <option value="">不归属任何课程</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="postContent">正文</label>
+        <textarea id="postContent" placeholder="请输入帖子正文..." rows="8" style="width:100%;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;color:var(--text-primary);font-size:0.9375rem;resize:vertical;font-family:inherit;"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelPostBtn">取消</button>
+        <button type="button" class="btn btn-primary" id="submitPostBtn">发布</button>
+      </div>
     </div>
   </div>
 

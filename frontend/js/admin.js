@@ -64,6 +64,7 @@
     document.getElementById('page-attendance-detail').style.display = page === 'attendance-detail' ? 'block' : 'none';
     document.getElementById('page-tickets').style.display = page === 'tickets' ? 'block' : 'none';
     document.getElementById('page-ticket-detail').style.display = page === 'ticket-detail' ? 'block' : 'none';
+    document.getElementById('page-forum').style.display = page === 'forum' ? 'block' : 'none';
     document.getElementById('page-backup').style.display = page === 'backup' ? 'block' : 'none';
 
     const headerTitle = document.querySelector('.admin-header h1');
@@ -80,6 +81,9 @@
     } else if (page === 'tickets' || page === 'ticket-detail') {
       headerTitle.textContent = '工单中心';
       headerSubtitle.textContent = '处理学生与教师提交的问题反馈';
+    } else if (page === 'forum') {
+      headerTitle.textContent = '内容审核';
+      headerSubtitle.textContent = '审核讨论区帖子与评论内容';
     } else if (page === 'backup') {
       headerTitle.textContent = '数据备份';
       headerSubtitle.textContent = '一键导出与导入系统核心数据';
@@ -93,6 +97,9 @@
     }
     if (page === 'tickets') {
       loadTickets();
+    }
+    if (page === 'forum') {
+      loadForumPosts();
     }
     if (page === 'backup') {
       loadBackupRecords();
@@ -651,6 +658,345 @@
     if (importBtn) importBtn.addEventListener('click', doImport);
   }
 
+  let forumCurrentTab = 'posts';
+  let forumPostPage = 1;
+  let forumPostPageSize = 10;
+  let forumCommentPage = 1;
+  let forumCommentPageSize = 10;
+  let forumSearchTimer = null;
+
+  function switchForumTab(tab) {
+    forumCurrentTab = tab;
+    document.querySelectorAll('.forum-tab-btn').forEach((btn) => {
+      const isActive = btn.dataset.tab === tab;
+      btn.classList.toggle('active', isActive);
+      if (isActive) {
+        btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+        btn.style.color = '#fff';
+      } else {
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--text-secondary)';
+      }
+    });
+    document.getElementById('forumPostsPanel').style.display = tab === 'posts' ? 'block' : 'none';
+    document.getElementById('forumCommentsPanel').style.display = tab === 'comments' ? 'block' : 'none';
+    document.getElementById('forumPostStatusFilter').style.display = tab === 'posts' ? '' : 'none';
+    document.getElementById('forumCommentStatusFilter').style.display = tab === 'comments' ? '' : 'none';
+    if (tab === 'posts') {
+      loadForumPosts();
+    } else {
+      loadForumComments();
+    }
+  }
+
+  async function loadForumPosts() {
+    const tbody = document.getElementById('forumPostTableBody');
+    if (!tbody) return;
+    const statusFilter = document.getElementById('forumPostStatusFilter')?.value || '';
+    const keyword = document.getElementById('forumSearchInput')?.value.trim() || '';
+
+    const params = new URLSearchParams({
+      page: forumPostPage,
+      pageSize: forumPostPageSize,
+      userId: user.id,
+      userRole: 'admin',
+    });
+    if (statusFilter) params.append('status', statusFilter);
+    if (keyword) params.append('keyword', keyword);
+
+    const { data } = await api('/api/forum/admin/posts?' + params.toString());
+    if (!data || !data.ok || !data.data) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+
+    const { list, total, totalPages } = data.data;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);">暂无帖子</td></tr>';
+    } else {
+      tbody.innerHTML = list
+        .map((p) => {
+          const statusBadge = p.isRemoved
+            ? '<span class="badge badge-absent">已下架</span>'
+            : '<span class="badge badge-signed">正常</span>';
+          const pinBadge = p.isPinned
+            ? '<span class="badge badge-lottery-waiting">📌 置顶</span>'
+            : '<span style="color:var(--text-secondary);">-</span>';
+          return `
+          <tr class="${p.isRemoved ? 'row-absent' : ''}">
+            <td>${p.id}</td>
+            <td style="max-width:260px;">
+              <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(p.title)}</div>
+              <div style="color:var(--text-secondary);font-size:0.75rem;margin-top:2px;">${p.course ? '📚 ' + escapeHtml(p.course.name) : '🏷️ 综合讨论'}</div>
+            </td>
+            <td>${escapeHtml(p.authorName)} <span style="color:var(--text-secondary);font-size:0.75rem;">(${p.authorRole})</span></td>
+            <td>${p.course ? escapeHtml(p.course.name) : '-'}</td>
+            <td>${p.viewCount ?? 0}</td>
+            <td>${p.likeCount ?? 0}</td>
+            <td>${p.commentCount ?? 0}</td>
+            <td>${pinBadge}</td>
+            <td>${statusBadge}</td>
+            <td style="color:var(--text-secondary);font-size:0.8125rem;">${formatDateTime(p.createdAt)}</td>
+            <td>
+              <button type="button" class="btn btn-ghost btn-sm forum-pin-btn" data-id="${p.id}" data-pinned="${p.isPinned ? '1' : '0'}">
+                ${p.isPinned ? '取消置顶' : '置顶'}
+              </button>
+              ${p.isRemoved
+                ? `<button type="button" class="btn btn-ghost btn-sm forum-restore-btn" data-id="${p.id}">恢复</button>`
+                : `<button type="button" class="btn btn-warning btn-sm forum-remove-btn" data-id="${p.id}">下架</button>`
+              }
+              <button type="button" class="btn btn-danger btn-sm forum-delete-btn" data-id="${p.id}">永久删除</button>
+            </td>
+          </tr>`;
+        })
+        .join('');
+
+      tbody.querySelectorAll('.forum-pin-btn').forEach((btn) => {
+        btn.addEventListener('click', () => toggleForumPostPin(parseInt(btn.dataset.id, 10), btn.dataset.pinned !== '1'));
+      });
+      tbody.querySelectorAll('.forum-remove-btn').forEach((btn) => {
+        btn.addEventListener('click', () => removeForumPost(parseInt(btn.dataset.id, 10)));
+      });
+      tbody.querySelectorAll('.forum-restore-btn').forEach((btn) => {
+        btn.addEventListener('click', () => restoreForumPost(parseInt(btn.dataset.id, 10)));
+      });
+      tbody.querySelectorAll('.forum-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', () => deleteForumPostPermanently(parseInt(btn.dataset.id, 10)));
+      });
+    }
+
+    renderForumPagination('forumPostPagination', total, totalPages, forumPostPage, (p) => {
+      forumPostPage = p;
+      loadForumPosts();
+    });
+  }
+
+  async function loadForumComments() {
+    const tbody = document.getElementById('forumCommentTableBody');
+    if (!tbody) return;
+    const statusFilter = document.getElementById('forumCommentStatusFilter')?.value || '';
+    const keyword = document.getElementById('forumSearchInput')?.value.trim() || '';
+
+    const params = new URLSearchParams({
+      page: forumCommentPage,
+      pageSize: forumCommentPageSize,
+      userId: user.id,
+      userRole: 'admin',
+    });
+    if (statusFilter) params.append('status', statusFilter);
+    if (keyword) params.append('keyword', keyword);
+
+    const { data } = await api('/api/forum/admin/comments?' + params.toString());
+    if (!data || !data.ok || !data.data) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+
+    const { list, total, totalPages } = data.data;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);">暂无评论</td></tr>';
+    } else {
+      tbody.innerHTML = list
+        .map((c) => {
+          const statusBadge = c.isRemoved
+            ? '<span class="badge badge-absent">已下架</span>'
+            : '<span class="badge badge-signed">正常</span>';
+          const contentPreview = c.content.length > 80 ? c.content.substring(0, 80) + '...' : c.content;
+          return `
+          <tr class="${c.isRemoved ? 'row-absent' : ''}">
+            <td>${c.id}</td>
+            <td style="max-width:300px;">
+              <div style="color:var(--text-primary);line-height:1.5;">${escapeHtml(contentPreview)}</div>
+            </td>
+            <td>${escapeHtml(c.authorName)} <span style="color:var(--text-secondary);font-size:0.75rem;">(${c.authorRole})</span></td>
+            <td>
+              <span style="color:var(--text-primary);">#${c.postId}</span>
+              ${c.post ? `<div style="color:var(--text-secondary);font-size:0.75rem;margin-top:2px;">${escapeHtml(c.post.title || '')}</div>` : ''}
+            </td>
+            <td>${c.replyToName ? '回复 ' + escapeHtml(c.replyToName) : (c.parentId ? '评论回复' : '-')}</td>
+            <td>${statusBadge}</td>
+            <td style="color:var(--text-secondary);font-size:0.8125rem;">${formatDateTime(c.createdAt)}</td>
+            <td>
+              ${c.isRemoved
+                ? ''
+                : `<button type="button" class="btn btn-warning btn-sm forum-comment-remove-btn" data-id="${c.id}">下架</button>`
+              }
+              <button type="button" class="btn btn-danger btn-sm forum-comment-delete-btn" data-id="${c.id}">永久删除</button>
+            </td>
+          </tr>`;
+        })
+        .join('');
+
+      tbody.querySelectorAll('.forum-comment-remove-btn').forEach((btn) => {
+        btn.addEventListener('click', () => removeForumComment(parseInt(btn.dataset.id, 10)));
+      });
+      tbody.querySelectorAll('.forum-comment-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', () => deleteForumCommentPermanently(parseInt(btn.dataset.id, 10)));
+      });
+    }
+
+    renderForumPagination('forumCommentPagination', total, totalPages, forumCommentPage, (p) => {
+      forumCommentPage = p;
+      loadForumComments();
+    });
+  }
+
+  function renderForumPagination(containerId, total, totalPages, currentPage, onChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} data-page="prev">上一页</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="page-btn" ${currentPage === totalPages ? 'disabled' : ''} data-page="next">下一页</button>`;
+    html += '</div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (page === 'prev' && currentPage > 1) {
+          onChange(currentPage - 1);
+        } else if (page === 'next' && currentPage < totalPages) {
+          onChange(currentPage + 1);
+        } else if (page !== 'prev' && page !== 'next') {
+          onChange(parseInt(page, 10));
+        }
+      });
+    });
+  }
+
+  async function toggleForumPostPin(postId, shouldPin) {
+    const confirmMsg = shouldPin ? '确定置顶该帖子？' : '确定取消置顶该帖子？';
+    if (!confirm(confirmMsg)) return;
+    const { data } = await api(`/api/forum/admin/posts/${postId}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin', isPinned: shouldPin }),
+    });
+    if (data && data.ok) {
+      showToast(shouldPin ? '已置顶' : '已取消置顶', 'success');
+      loadForumPosts();
+    } else {
+      showToast((data && data.message) || '操作失败', 'error');
+    }
+  }
+
+  async function removeForumPost(postId) {
+    if (!confirm('确定下架该帖子？下架后学生端将无法看到该帖子。')) return;
+    const { data } = await api(`/api/forum/admin/posts/${postId}/remove`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin' }),
+    });
+    if (data && data.ok) {
+      showToast('已下架', 'success');
+      loadForumPosts();
+    } else {
+      showToast((data && data.message) || '下架失败', 'error');
+    }
+  }
+
+  async function restoreForumPost(postId) {
+    if (!confirm('确定恢复该帖子？')) return;
+    const { data } = await api(`/api/forum/admin/posts/${postId}/restore`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin' }),
+    });
+    if (data && data.ok) {
+      showToast('已恢复', 'success');
+      loadForumPosts();
+    } else {
+      showToast((data && data.message) || '恢复失败', 'error');
+    }
+  }
+
+  async function deleteForumPostPermanently(postId) {
+    if (!confirm('⚠️ 确定永久删除该帖子？此操作不可撤销，所有关联的评论和点赞也将被删除！')) return;
+    const { data } = await api(`/api/forum/admin/posts/${postId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin' }),
+    });
+    if (data && data.ok) {
+      showToast('已永久删除', 'success');
+      loadForumPosts();
+    } else {
+      showToast((data && data.message) || '删除失败', 'error');
+    }
+  }
+
+  async function removeForumComment(commentId) {
+    if (!confirm('确定下架该评论？下架后学生端将无法看到该评论。')) return;
+    const { data } = await api(`/api/forum/admin/comments/${commentId}/remove`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin' }),
+    });
+    if (data && data.ok) {
+      showToast('已下架', 'success');
+      loadForumComments();
+    } else {
+      showToast((data && data.message) || '下架失败', 'error');
+    }
+  }
+
+  async function deleteForumCommentPermanently(commentId) {
+    if (!confirm('⚠️ 确定永久删除该评论？此操作不可撤销！')) return;
+    const { data } = await api(`/api/forum/admin/comments/${commentId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ userId: user.id, userRole: 'admin' }),
+    });
+    if (data && data.ok) {
+      showToast('已永久删除', 'success');
+      loadForumComments();
+    } else {
+      showToast((data && data.message) || '删除失败', 'error');
+    }
+  }
+
+  function initForumPage() {
+    document.querySelectorAll('.forum-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => switchForumTab(btn.dataset.tab));
+    });
+    document.querySelectorAll('.forum-tab-btn.active').forEach((btn) => {
+      btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+      btn.style.color = '#fff';
+    });
+
+    const postStatusFilter = document.getElementById('forumPostStatusFilter');
+    if (postStatusFilter) {
+      postStatusFilter.addEventListener('change', () => {
+        forumPostPage = 1;
+        loadForumPosts();
+      });
+    }
+    const commentStatusFilter = document.getElementById('forumCommentStatusFilter');
+    if (commentStatusFilter) {
+      commentStatusFilter.addEventListener('change', () => {
+        forumCommentPage = 1;
+        loadForumComments();
+      });
+    }
+
+    const searchInput = document.getElementById('forumSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        if (forumSearchTimer) clearTimeout(forumSearchTimer);
+        forumSearchTimer = setTimeout(() => {
+          if (forumCurrentTab === 'posts') {
+            forumPostPage = 1;
+            loadForumPosts();
+          } else {
+            forumCommentPage = 1;
+            loadForumComments();
+          }
+        }, 400);
+      });
+    }
+  }
+
   let ticketPage = 1;
   let ticketPageSize = 10;
   let currentTicketId = null;
@@ -1060,6 +1406,7 @@
     }
 
     loadCourses();
+    initForumPage();
     initBackupPage();
 
     checkNotifications();
@@ -1311,6 +1658,28 @@
     #dropZone:hover {
       border-color: rgba(99, 102, 241, 0.5);
       background: rgba(99, 102, 241, 0.04);
+    }
+    .btn-warning {
+      background: linear-gradient(135deg, #d97706, #b45309);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-warning:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+    }
+    .btn-warning:active {
+      transform: translateY(0);
+    }
+    .forum-tab-btn:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.06) !important;
+      color: var(--text-primary) !important;
     }
   `;
   document.head.appendChild(style);
