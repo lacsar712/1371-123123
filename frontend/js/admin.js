@@ -64,6 +64,7 @@
     document.getElementById('page-attendance-detail').style.display = page === 'attendance-detail' ? 'block' : 'none';
     document.getElementById('page-tickets').style.display = page === 'tickets' ? 'block' : 'none';
     document.getElementById('page-ticket-detail').style.display = page === 'ticket-detail' ? 'block' : 'none';
+    document.getElementById('page-backup').style.display = page === 'backup' ? 'block' : 'none';
 
     const headerTitle = document.querySelector('.admin-header h1');
     const headerSubtitle = document.querySelector('.admin-header .header-subtitle');
@@ -79,6 +80,9 @@
     } else if (page === 'tickets' || page === 'ticket-detail') {
       headerTitle.textContent = '工单中心';
       headerSubtitle.textContent = '处理学生与教师提交的问题反馈';
+    } else if (page === 'backup') {
+      headerTitle.textContent = '数据备份';
+      headerSubtitle.textContent = '一键导出与导入系统核心数据';
     }
 
     if (page === 'lottery') {
@@ -89,6 +93,9 @@
     }
     if (page === 'tickets') {
       loadTickets();
+    }
+    if (page === 'backup') {
+      loadBackupRecords();
     }
   }
 
@@ -403,6 +410,245 @@
     } catch (e) {
       showToast('导出失败', 'error');
     }
+  }
+
+  let selectedFile = null;
+
+  function formatFileSize(bytes) {
+    if (bytes == null) return '-';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function sumAffectedRows(obj) {
+    if (!obj) return 0;
+    return Object.values(obj).reduce((s, v) => s + (Number(v) || 0), 0);
+  }
+
+  async function doExport() {
+    const btn = document.getElementById('exportBtn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '正在导出...';
+    try {
+      const r = await fetch(API_BASE + '/api/backup/export');
+      if (!r.ok) throw new Error('导出失败');
+      const blob = await r.blob();
+      const disp = r.headers.get('Content-Disposition') || '';
+      const m = disp.match(/filename="?([^"]+)"?/);
+      const filename = m ? m[1] : `backup_${Date.now()}.json.gz`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('导出成功', 'success');
+      loadBackupRecords();
+    } catch (e) {
+      showToast('导出失败：' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⬇ 导出数据备份';
+    }
+  }
+
+  function handleFileSelect(file) {
+    if (!file) return;
+    if (!/\.(json|gz)$/i.test(file.name)) {
+      showToast('仅支持 .json.gz 或 .json 格式文件', 'error');
+      return;
+    }
+    selectedFile = file;
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = formatFileSize(file.size);
+    document.getElementById('importBtn').disabled = false;
+  }
+
+  function clearFileInfo() {
+    selectedFile = null;
+    document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('fileName').textContent = '';
+    document.getElementById('fileSize').textContent = '';
+    document.getElementById('importBtn').disabled = true;
+    document.getElementById('fileInput').value = '';
+  }
+
+  function addImportLog(logsEl, entry) {
+    const colors = {
+      info: 'var(--text-secondary)',
+      success: 'var(--success)',
+      error: 'var(--danger)',
+      warn: '#eab308',
+    };
+    const color = colors[entry.level] || 'var(--text-secondary)';
+    const time = new Date(entry.time).toLocaleTimeString('zh-CN', { hour12: false });
+    const div = document.createElement('div');
+    div.style.color = color;
+    div.innerHTML = `<span style="opacity:0.6;">[${time}]</span> ${escapeHtml(entry.message)}`;
+    logsEl.appendChild(div);
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+
+  function updateImportProgress(percent, logsEl, estimatedTotalSteps) {
+    const bar = document.getElementById('importProgressBar');
+    const text = document.getElementById('importProgressText');
+    const logCount = logsEl.children.length;
+    const realPercent = Math.min(99, Math.max(percent, (logCount / Math.max(estimatedTotalSteps, 20)) * 100));
+    bar.style.width = realPercent + '%';
+    text.textContent = Math.round(realPercent) + '%';
+  }
+
+  async function doImport() {
+    if (!selectedFile) {
+      showToast('请先选择备份文件', 'error');
+      return;
+    }
+    const modeEl = document.querySelector('input[name="importMode"]:checked');
+    const mode = modeEl ? modeEl.value : 'overwrite';
+    const confirmMsg = mode === 'overwrite'
+      ? '确认使用覆盖模式导入？\n此操作将清空所有现有数据后写入备份文件，不可撤销！'
+      : '确认使用增量模式导入？\n此操作将按主键合并数据，已有记录将被更新。';
+    if (!confirm(confirmMsg)) return;
+
+    const btn = document.getElementById('importBtn');
+    btn.disabled = true;
+    btn.textContent = '正在导入...';
+
+    const progressCard = document.getElementById('importProgressCard');
+    const logsEl = document.getElementById('importLogs');
+    progressCard.style.display = 'block';
+    logsEl.innerHTML = '';
+    document.getElementById('importProgressBar').style.width = '0%';
+    document.getElementById('importProgressText').textContent = '0%';
+
+    const estimatedTotalSteps = 40;
+    let progressTimer;
+    let currentPercent = 0;
+    progressTimer = setInterval(() => {
+      currentPercent = Math.min(currentPercent + 2, 95);
+      updateImportProgress(currentPercent, logsEl, estimatedTotalSteps);
+    }, 500);
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+    fd.append('mode', mode);
+
+    try {
+      const r = await fetch(API_BASE + '/api/backup/import', { method: 'POST', body: fd });
+      const data = await r.json().catch(() => ({}));
+      clearInterval(progressTimer);
+
+      if (data && data.data && Array.isArray(data.data.logs)) {
+        logsEl.innerHTML = '';
+        data.data.logs.forEach((l) => addImportLog(logsEl, l));
+      }
+
+      if (data && data.ok) {
+        document.getElementById('importProgressBar').style.width = '100%';
+        document.getElementById('importProgressText').textContent = '100%';
+        showToast('导入成功', 'success');
+        clearFileInfo();
+        loadBackupRecords();
+      } else {
+        showToast((data && data.message) || '导入失败', 'error');
+      }
+    } catch (e) {
+      clearInterval(progressTimer);
+      addImportLog(logsEl, { time: new Date().toISOString(), level: 'error', message: '网络错误：' + e.message });
+      showToast('导入失败：' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⬆ 开始导入';
+    }
+  }
+
+  async function loadBackupRecords() {
+    const tbody = document.getElementById('backupTableBody');
+    if (!tbody) return;
+    const { data } = await api('/api/backup/records');
+    if (!data || !data.ok || !Array.isArray(data.data)) {
+      tbody.innerHTML =
+        '<tr><td colspan="9" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+    const rows = data.data;
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">暂无备份记录</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map((r) => {
+        const typeBadge = r.type === 'export'
+          ? '<span class="badge badge-lottery-won">导出</span>'
+          : '<span class="badge badge-status-processing">导入</span>';
+        const modeBadge = r.mode === 'overwrite'
+          ? '<span class="badge badge-absent">覆盖</span>'
+          : r.mode === 'incremental'
+          ? '<span class="badge badge-lottery-waiting">增量</span>'
+          : '<span style="color:var(--text-secondary);">-</span>';
+        const statusBadge = r.status === 'success'
+          ? '<span class="badge badge-signed">成功</span>'
+          : '<span class="badge badge-absent">失败</span>';
+        const totalRows = sumAffectedRows(r.affectedRows);
+        return `
+        <tr>
+          <td>${r.id}</td>
+          <td>${typeBadge}</td>
+          <td>${modeBadge}</td>
+          <td>${escapeHtml(r.operator)}</td>
+          <td style="font-family:monospace;font-size:0.8125rem;">${r.fileName ? escapeHtml(r.fileName) : '-'}</td>
+          <td>${formatFileSize(r.fileSize)}</td>
+          <td>${totalRows > 0 ? totalRows + ' 行' : '-'}</td>
+          <td>${statusBadge}</td>
+          <td style="color:var(--text-secondary);font-size:0.8125rem;">${formatDateTime(r.createdAt)}</td>
+        </tr>`;
+      })
+      .join('');
+  }
+
+  function initBackupPage() {
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) exportBtn.addEventListener('click', doExport);
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    if (dropZone && fileInput) {
+      dropZone.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        handleFileSelect(file);
+      });
+      ['dragenter', 'dragover'].forEach((ev) => {
+        dropZone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.style.borderColor = 'var(--accent-start)';
+          dropZone.style.background = 'rgba(99,102,241,0.08)';
+        });
+      });
+      ['dragleave', 'drop'].forEach((ev) => {
+        dropZone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.style.borderColor = 'var(--bg-glass-border)';
+          dropZone.style.background = 'transparent';
+        });
+      });
+      dropZone.addEventListener('drop', (e) => {
+        const file = e.dataTransfer.files && e.dataTransfer.files[0];
+        handleFileSelect(file);
+      });
+    }
+
+    const importBtn = document.getElementById('importBtn');
+    if (importBtn) importBtn.addEventListener('click', doImport);
   }
 
   let ticketPage = 1;
@@ -814,6 +1060,7 @@
     }
 
     loadCourses();
+    initBackupPage();
 
     checkNotifications();
     notificationTimer = setInterval(checkNotifications, 30000);
@@ -1050,6 +1297,20 @@
       font-size: 0.8125rem;
       color: rgba(255,255,255,0.8);
       line-height: 1.5;
+    }
+    .card-backup {
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card-backup:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    #dropZone {
+      transition: all 0.2s ease;
+    }
+    #dropZone:hover {
+      border-color: rgba(99, 102, 241, 0.5);
+      background: rgba(99, 102, 241, 0.04);
     }
   `;
   document.head.appendChild(style);

@@ -32,6 +32,7 @@ const StudentBadge = require('./StudentBadge')(sequelize);
 const PointRecord = require('./PointRecord')(sequelize);
 const CourseEvaluation = require('./CourseEvaluation')(sequelize);
 const Exam = require('./Exam')(sequelize);
+const BackupRecord = require('./BackupRecord')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Student.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
@@ -98,4 +99,5 @@ module.exports = {
   PointRecord,
   CourseEvaluation,
   Exam,
+  BackupRecord,
 };
