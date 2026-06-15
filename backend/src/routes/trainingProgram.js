@@ -2,7 +2,7 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const router = express.Router();
-const { TrainingProgram, TrainingProgramCourse, Course, Student, Enrollment, sequelize } = require('../models');
+const { TrainingProgram, TrainingProgramCourse, Course, Student, Enrollment, Exam, sequelize } = require('../models');
 const logger = require('../logger');
 
 const CATEGORY_MAP = {
@@ -406,7 +406,7 @@ router.get('/student/:studentId', param('studentId').isInt({ min: 1 }), async (r
             {
               model: Course,
               as: 'course',
-              attributes: ['id', 'code', 'name', 'credit'],
+              attributes: ['id', 'code', 'name', 'credit', 'examTime', 'examDuration'],
             },
           ],
         },
@@ -423,6 +423,38 @@ router.get('/student/:studentId', param('studentId').isInt({ min: 1 }), async (r
 
     const enrolledCourseIds = new Set(enrollments.map((e) => e.courseId));
 
+    const programCourseIds = program.programCourses ? program.programCourses.map((pc) => pc.courseId) : [];
+    const examsMap = {};
+    if (programCourseIds.length > 0) {
+      const exams = await Exam.findAll({
+        where: { courseId: { [Op.in]: programCourseIds } },
+        attributes: ['id', 'courseId', 'examTime', 'duration'],
+        raw: true,
+      });
+      exams.forEach((ex) => { examsMap[ex.courseId] = ex; });
+    }
+
+    const now = new Date();
+
+    function getCourseStatus(courseId, course) {
+      if (!enrolledCourseIds.has(courseId)) {
+        return { status: 'not_taken', statusText: '未修', isCompleted: false };
+      }
+
+      let examEndTime = null;
+      const exam = examsMap[courseId];
+      if (exam && exam.examTime) {
+        examEndTime = new Date(new Date(exam.examTime).getTime() + (exam.duration || 120) * 60 * 1000);
+      } else if (course && course.examTime) {
+        examEndTime = new Date(new Date(course.examTime).getTime() + (course.examDuration || 120) * 60 * 1000);
+      }
+
+      if (examEndTime && now >= examEndTime) {
+        return { status: 'completed', statusText: '已修过', isCompleted: true };
+      }
+      return { status: 'studying', statusText: '在修', isCompleted: false };
+    }
+
     const courses = {
       required: [],
       limited_elective: [],
@@ -437,12 +469,9 @@ router.get('/student/:studentId', param('studentId').isInt({ min: 1 }), async (r
     if (program.programCourses) {
       program.programCourses.forEach((pc) => {
         if (pc.course) {
-          let status = 'not_taken';
-          let statusText = '未修';
+          const { status, statusText, isCompleted } = getCourseStatus(pc.courseId, pc.course);
 
-          if (enrolledCourseIds.has(pc.courseId)) {
-            status = 'studying';
-            statusText = '在修';
+          if (isCompleted) {
             if (pc.category === 'required') {
               earnedRequiredCredits += pc.course.credit;
             } else if (pc.category === 'limited_elective') {
@@ -519,7 +548,7 @@ router.get('/student/:studentId/summary', param('studentId').isInt({ min: 1 }), 
             {
               model: Course,
               as: 'course',
-              attributes: ['id', 'credit'],
+              attributes: ['id', 'credit', 'examTime', 'examDuration'],
             },
           ],
         },
@@ -536,6 +565,33 @@ router.get('/student/:studentId/summary', param('studentId').isInt({ min: 1 }), 
 
     const enrolledCourseIds = new Set(enrollments.map((e) => e.courseId));
 
+    const programCourseIds = program.programCourses ? program.programCourses.map((pc) => pc.courseId) : [];
+    const examsMap = {};
+    if (programCourseIds.length > 0) {
+      const exams = await Exam.findAll({
+        where: { courseId: { [Op.in]: programCourseIds } },
+        attributes: ['courseId', 'examTime', 'duration'],
+        raw: true,
+      });
+      exams.forEach((ex) => { examsMap[ex.courseId] = ex; });
+    }
+
+    const now = new Date();
+
+    function isCourseCompleted(courseId, course) {
+      if (!enrolledCourseIds.has(courseId)) return false;
+
+      let examEndTime = null;
+      const exam = examsMap[courseId];
+      if (exam && exam.examTime) {
+        examEndTime = new Date(new Date(exam.examTime).getTime() + (exam.duration || 120) * 60 * 1000);
+      } else if (course && course.examTime) {
+        examEndTime = new Date(new Date(course.examTime).getTime() + (course.examDuration || 120) * 60 * 1000);
+      }
+
+      return examEndTime && now >= examEndTime;
+    }
+
     let earnedTotalCredits = 0;
     let earnedRequiredCredits = 0;
     let earnedLimitedElectiveCredits = 0;
@@ -543,7 +599,7 @@ router.get('/student/:studentId/summary', param('studentId').isInt({ min: 1 }), 
 
     if (program.programCourses) {
       program.programCourses.forEach((pc) => {
-        if (pc.course && enrolledCourseIds.has(pc.courseId)) {
+        if (pc.course && isCourseCompleted(pc.courseId, pc.course)) {
           if (pc.category === 'required') {
             earnedRequiredCredits += pc.course.credit;
           } else if (pc.category === 'limited_elective') {
