@@ -91,6 +91,35 @@
     }
   }
 
+  const CATEGORY_COLORS = {
+    course: '#3b82f6',
+    exam: '#ef4444',
+    holiday: '#10b981',
+    custom: '#6366f1',
+  };
+
+  function categoryBadgeChar(cat) {
+    switch (cat) {
+      case 'course':
+        return '课';
+      case 'exam':
+        return '考';
+      case 'holiday':
+        return '假';
+      case 'custom':
+        return '自';
+      default:
+        return '';
+    }
+  }
+
+  function resolveCategoryColor(ev) {
+    if (ev && typeof ev.categoryColor === 'string' && ev.categoryColor) {
+      return ev.categoryColor;
+    }
+    return CATEGORY_COLORS[ev && ev.category] || CATEGORY_COLORS.custom;
+  }
+
   class Calendar {
     constructor(container, options) {
       this.container =
@@ -250,13 +279,16 @@
 
           let eventsHtml = previewEvents
             .map((e) => {
-              const bg = hexToRgba(e.color || '#6366f1', 0.85);
-              const border = e.color || '#6366f1';
+              const bg = hexToRgba(e.color || CATEGORY_COLORS[e.category] || '#6366f1', 0.85);
+              const catBorder = resolveCategoryColor(e);
               const time = this._eventTimeLabel(e);
+              const cat = e.category || 'custom';
+              const badge = categoryBadgeChar(cat);
               return `
-                <div class="cal-event-chip cal-ev-${e.category}" data-event-id="${e.id}"
-                     style="background:${bg};border-left:3px solid ${border};"
-                     title="${this._escapeAttr(e.title)}${time ? ' · ' + time : ''}">
+                <div class="cal-event-chip cal-ev-${cat}" data-event-id="${e.id}"
+                     style="background:${bg};border-left:4px solid ${catBorder};"
+                     title="[${categoryLabel(cat)}] ${this._escapeAttr(e.title)}${time ? ' · ' + time : ''}">
+                  <span class="cal-ev-badge" style="background:${catBorder};">${badge}</span>
                   ${time ? `<span class="cal-ev-time">${time}</span>` : ''}
                   <span class="cal-ev-title">${this._escapeHtml(e.title)}</span>
                 </div>
@@ -319,14 +351,19 @@
             const hPct = e.heightRatio * 100;
             const leftPct = e.leftRatio * 100;
             const wPct = e.widthRatio * 100;
-            const bg = hexToRgba(e.color || '#6366f1', 0.9);
-            const border = e.color || '#6366f1';
+            const bg = hexToRgba(e.color || CATEGORY_COLORS[e.category] || '#6366f1', 0.9);
+            const catBorder = resolveCategoryColor(e);
+            const cat = e.category || 'custom';
+            const badge = categoryBadgeChar(cat);
             const time = this._eventTimeLabel(e);
             return `
-              <div class="tg-event tg-ev-${e.category}" data-event-id="${e.id}"
+              <div class="tg-event tg-ev-${cat}" data-event-id="${e.id}"
                    style="top:${topPct}%;height:${hPct}%;left:${leftPct}%;width:${wPct}%;
-                          background:${bg};border-left:3px solid ${border};">
-                <div class="tg-ev-title">${this._escapeHtml(e.title)}</div>
+                          background:${bg};border-left:4px solid ${catBorder};">
+                <div class="tg-ev-top">
+                  <span class="tg-ev-badge" style="background:${catBorder};">${badge}</span>
+                  <span class="tg-ev-title">${this._escapeHtml(e.title)}</span>
+                </div>
                 ${time ? `<div class="tg-ev-time">${time}</div>` : ''}
                 ${e.location ? `<div class="tg-ev-loc">${this._escapeHtml(e.location)}</div>` : ''}
               </div>

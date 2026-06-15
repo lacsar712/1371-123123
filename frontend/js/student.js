@@ -1589,7 +1589,7 @@
 
   let calendarInstance = null;
   let editingEvent = null;
-  const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#ef4444', '#ec4899', '#f97316'];
+  const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#7c3aed', '#d946ef', '#ec4899', '#f472b6', '#f59e0b', '#f97316', '#06b6d4'];
 
   function showCalendarPage() {
     document.querySelector('main.student-main').style.display = 'none';

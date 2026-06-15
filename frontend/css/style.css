@@ -1301,6 +1301,21 @@ tr:last-child td {
   text-overflow: ellipsis;
 }
 
+.cal-ev-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 5px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 3px;
+  text-align: center;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
 .cal-event-more {
   padding: 2px 6px;
   font-size: 0.6875rem;
@@ -1512,6 +1527,27 @@ tr:last-child td {
   filter: brightness(1.1);
   transform: scale(1.01);
   z-index: 10;
+}
+
+.tg-ev-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tg-ev-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 5px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 3px;
+  text-align: center;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 
 .tg-ev-title {

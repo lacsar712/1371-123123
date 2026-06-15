@@ -7,7 +7,25 @@ const logger = require('../logger');
 
 const SEMESTER_START = new Date('2026-02-23T00:00:00');
 
-function parseDate(d) {
+const CATEGORY_COLORS = {
+  course: '#3b82f6',
+  exam: '#ef4444',
+  holiday: '#10b981',
+  custom: '#6366f1',
+};
+
+const COURSE_COLOR_PALETTE = [
+  '#1e40af',
+  '#1d4ed8',
+  '#2563eb',
+  '#3b82f6',
+  '#60a5fa',
+  '#0c4a6e',
+  '#0369a1',
+  '#0284c7',
+];
+
+const parseDate = (d) => {
   if (!d) return null;
   const t = new Date(d);
   return isNaN(t.getTime()) ? null : t;
@@ -35,7 +53,6 @@ function parseTimeStr(s) {
 
 function generateCourseScheduleEvents(courses, rangeStart, rangeEnd) {
   const events = [];
-  const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
 
   courses.forEach((course, courseIdx) => {
     let schedules = [];
@@ -45,6 +62,8 @@ function generateCourseScheduleEvents(courses, rangeStart, rangeEnd) {
       schedules = [];
     }
     if (!Array.isArray(schedules)) schedules = [];
+
+    const courseColor = COURSE_COLOR_PALETTE[courseIdx % COURSE_COLOR_PALETTE.length];
 
     schedules.forEach((sched, schedIdx) => {
       const dayOfWeek = parseInt(sched.dayOfWeek, 10);
@@ -70,7 +89,7 @@ function generateCourseScheduleEvents(courses, rangeStart, rangeEnd) {
             start.setHours(sh, sm, 0, 0);
             const end = new Date(eventDate);
             end.setHours(eh, em, 0, 0);
-            const color = colors[(courseIdx + schedIdx) % colors.length];
+            const color = courseColor;
             events.push({
               id: `course_${course.id}_${schedIdx}_${start.getTime()}`,
               sourceId: course.id,
@@ -79,6 +98,7 @@ function generateCourseScheduleEvents(courses, rangeStart, rangeEnd) {
               startTime: start.toISOString(),
               endTime: end.toISOString(),
               color: color,
+              categoryColor: CATEGORY_COLORS.course,
               location: sched.location || '',
               editable: false,
               courseCode: course.code,
@@ -100,7 +120,8 @@ function generateCourseScheduleEvents(courses, rangeStart, rangeEnd) {
           category: 'exam',
           startTime: examStart.toISOString(),
           endTime: examEnd.toISOString(),
-          color: '#ef4444',
+          color: CATEGORY_COLORS.exam,
+          categoryColor: CATEGORY_COLORS.exam,
           editable: false,
           courseCode: course.code,
         });
@@ -155,7 +176,8 @@ router.get('/events', listValidators, async (req, res) => {
       category: 'custom',
       startTime: r.startTime.toISOString(),
       endTime: r.endTime.toISOString(),
-      color: r.color || '#6366f1',
+      color: r.color || CATEGORY_COLORS.custom,
+      categoryColor: CATEGORY_COLORS.custom,
       editable: true,
     }));
 
@@ -194,7 +216,8 @@ function generateHolidays(rangeStart, rangeEnd) {
         category: 'holiday',
         startTime: s.toISOString(),
         endTime: e.toISOString(),
-        color: '#10b981',
+        color: CATEGORY_COLORS.holiday,
+        categoryColor: CATEGORY_COLORS.holiday,
         editable: false,
       });
     }
@@ -238,7 +261,7 @@ router.post('/events', createValidators, async (req, res) => {
       title: title.trim(),
       startTime,
       endTime,
-      color: (color || '').trim() || '#6366f1',
+      color: (color || '').trim() || CATEGORY_COLORS.custom,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
