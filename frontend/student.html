@@ -240,7 +240,45 @@
       </div>
       <div class="form-group">
         <label for="postContent">正文</label>
-        <textarea id="postContent" placeholder="请输入帖子正文..." rows="8" style="width:100%;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;color:var(--text-primary);font-size:0.9375rem;resize:vertical;font-family:inherit;"></textarea>
+        <div class="rich-editor-wrapper" style="border:1px solid var(--bg-glass-border);border-radius:10px;overflow:hidden;">
+          <div class="rich-editor-toolbar" style="display:flex;gap:4px;padding:8px 12px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--bg-glass-border);flex-wrap:wrap;">
+            <button type="button" class="rich-tool-btn" data-cmd="bold" title="加粗 (Ctrl+B)" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-weight:700;transition:all 0.15s;">B</button>
+            <button type="button" class="rich-tool-btn" data-cmd="italic" title="斜体 (Ctrl+I)" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-style:italic;transition:all 0.15s;">I</button>
+            <button type="button" class="rich-tool-btn" data-cmd="underline" title="下划线 (Ctrl+U)" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;text-decoration:underline;transition:all 0.15s;">U</button>
+            <button type="button" class="rich-tool-btn" data-cmd="strikeThrough" title="删除线" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;text-decoration:line-through;transition:all 0.15s;">S</button>
+            <span style="width:1px;height:20px;background:var(--bg-glass-border);margin:0 4px;align-self:center;"></span>
+            <button type="button" class="rich-tool-btn" data-cmd="insertUnorderedList" title="无序列表" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">•</button>
+            <button type="button" class="rich-tool-btn" data-cmd="insertOrderedList" title="有序列表" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">1.</button>
+            <span style="width:1px;height:20px;background:var(--bg-glass-border);margin:0 4px;align-self:center;"></span>
+            <button type="button" class="rich-tool-btn" data-cmd="justifyLeft" title="左对齐" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.875rem;transition:all 0.15s;">⬅</button>
+            <button type="button" class="rich-tool-btn" data-cmd="justifyCenter" title="居中" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.875rem;transition:all 0.15s;">⬌</button>
+            <button type="button" class="rich-tool-btn" data-cmd="justifyRight" title="右对齐" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.875rem;transition:all 0.15s;">➡</button>
+            <span style="width:1px;height:20px;background:var(--bg-glass-border);margin:0 4px;align-self:center;"></span>
+            <button type="button" class="rich-tool-btn" data-cmd="createLink" title="插入链接" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">🔗</button>
+            <button type="button" class="rich-tool-btn" data-cmd="insertImage" title="插入图片" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">🖼</button>
+            <span style="width:1px;height:20px;background:var(--bg-glass-border);margin:0 4px;align-self:center;"></span>
+            <select class="rich-tool-btn" data-cmd="formatBlock" title="段落格式" style="height:32px;padding:0 8px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.8125rem;transition:all 0.15s;">
+              <option value="">段落</option>
+              <option value="h1">标题 1</option>
+              <option value="h2">标题 2</option>
+              <option value="h3">标题 3</option>
+              <option value="blockquote">引用</option>
+              <option value="pre">代码块</option>
+            </select>
+            <select class="rich-tool-btn" data-cmd="fontSize" title="字体大小" style="height:32px;padding:0 8px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.8125rem;transition:all 0.15s;">
+              <option value="">字号</option>
+              <option value="1">小</option>
+              <option value="3">正常</option>
+              <option value="5">大</option>
+              <option value="7">特大</option>
+            </select>
+            <span style="width:1px;height:20px;background:var(--bg-glass-border);margin:0 4px;align-self:center;"></span>
+            <button type="button" class="rich-tool-btn" data-cmd="undo" title="撤销 (Ctrl+Z)" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">↶</button>
+            <button type="button" class="rich-tool-btn" data-cmd="redo" title="重做 (Ctrl+Y)" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:1rem;transition:all 0.15s;">↷</button>
+            <button type="button" class="rich-tool-btn" data-cmd="removeFormat" title="清除格式" style="width:32px;height:32px;border:none;background:transparent;color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.875rem;transition:all 0.15s;">✕</button>
+          </div>
+          <div id="postContent" contenteditable="true" data-placeholder="请输入帖子正文..." style="min-height:200px;padding:14px 16px;background:transparent;color:var(--text-primary);font-size:0.9375rem;line-height:1.7;outline:none;word-break:break-word;"></div>
+        </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelPostBtn">取消</button>

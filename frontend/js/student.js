@@ -2791,7 +2791,7 @@
               <span>💬 ${post.commentCount ?? 0} 评论</span>
             </div>
           </div>
-          <div class="forum-detail-content">${post.content}</div>
+          <div class="forum-detail-content">${renderPostContent(post.content)}</div>
           <div class="forum-detail-actions">
             <button type="button" class="btn ${liked ? 'btn-primary' : 'btn-ghost'} forum-like-btn" data-id="${post.id}">
               ${liked ? '❤️ 已点赞' : '🤍 点赞'} <span class="forum-like-count">${likeCount}</span>
@@ -2987,25 +2987,108 @@
 
   function openNewPostModal() {
     document.getElementById('postTitle').value = '';
-    document.getElementById('postContent').value = '';
+    const editor = document.getElementById('postContent');
+    if (editor) {
+      editor.innerHTML = '';
+    }
     document.getElementById('postCourse').value = '';
     document.getElementById('newPostModal').classList.add('show');
+    setTimeout(() => editor && editor.focus(), 100);
   }
 
   function closeNewPostModal() {
     document.getElementById('newPostModal').classList.remove('show');
   }
 
+  function renderPostContent(content) {
+    if (!content) return '';
+    const hasHtmlTags = /<[a-z][\s\S]*>/i.test(content);
+    if (hasHtmlTags) {
+      return sanitizeHtml(content);
+    } else {
+      return escapeHtml(content).replace(/\n/g, '<br>');
+    }
+  }
+
+  function sanitizeHtml(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const allowedTags = ['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'P', 'BR', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'IMG', 'SPAN', 'DIV', 'FONT'];
+    const allowedAttrs = ['href', 'src', 'alt', 'title', 'style', 'target', 'size', 'color'];
+    const allowedStyles = ['text-align', 'font-weight', 'font-style', 'text-decoration', 'font-size', 'color'];
+
+    function cleanNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) return;
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        node.remove();
+        return;
+      }
+      const tagName = node.tagName.toUpperCase();
+      if (allowedTags.indexOf(tagName) === -1) {
+        const text = document.createTextNode(node.textContent || '');
+        node.parentNode.replaceChild(text, node);
+        return;
+      }
+      const attrs = Array.from(node.attributes);
+      attrs.forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        if (allowedAttrs.indexOf(name) === -1) {
+          node.removeAttribute(attr.name);
+          return;
+        }
+        if (name === 'href' || name === 'src') {
+          const val = attr.value.toLowerCase();
+          if (val.indexOf('javascript:') === 0 || val.indexOf('vbscript:') === 0 || val.indexOf('data:') === 0) {
+            node.removeAttribute(attr.name);
+          }
+          if (name === 'href') {
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+          }
+        }
+        if (name === 'style') {
+          const styles = attr.value.split(';').filter((s) => {
+            const key = s.split(':')[0]?.trim().toLowerCase();
+            return key && allowedStyles.indexOf(key) !== -1;
+          }).join(';');
+          if (styles) {
+            node.setAttribute('style', styles);
+          } else {
+            node.removeAttribute('style');
+          }
+        }
+      });
+      Array.from(node.childNodes).forEach(cleanNode);
+    }
+
+    Array.from(div.childNodes).forEach(cleanNode);
+    return div.innerHTML;
+  }
+
+  function getEditorContent(editor) {
+    if (!editor) return '';
+    const html = editor.innerHTML.trim();
+    if (!html) return '';
+    return sanitizeHtml(html);
+  }
+
+  function isEditorEmpty(editor) {
+    if (!editor) return true;
+    const text = editor.textContent || '';
+    return text.trim().length === 0;
+  }
+
   async function submitPost() {
     const title = document.getElementById('postTitle').value.trim();
-    const content = document.getElementById('postContent').value.trim();
+    const editor = document.getElementById('postContent');
+    const content = getEditorContent(editor);
     const courseId = document.getElementById('postCourse').value;
 
     if (!title) {
       showToast('请输入标题', 'error');
       return;
     }
-    if (!content) {
+    if (!content || isEditorEmpty(editor)) {
       showToast('请输入正文', 'error');
       return;
     }
@@ -3511,8 +3594,200 @@
         outline: none;
         border-color: var(--accent-start);
       }
+      .rich-tool-btn:hover:not(:disabled) {
+        background: rgba(99, 102, 241, 0.15) !important;
+        color: var(--accent-start) !important;
+      }
+      .rich-tool-btn.active {
+        background: rgba(99, 102, 241, 0.2) !important;
+        color: var(--accent-start) !important;
+      }
+      #postContent:empty:before {
+        content: attr(data-placeholder);
+        color: var(--text-secondary);
+        pointer-events: none;
+      }
+      #postContent a {
+        color: var(--accent-start);
+        text-decoration: underline;
+      }
+      #postContent img {
+        max-width: 100%;
+        border-radius: 8px;
+        margin: 8px 0;
+      }
+      #postContent pre {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 12px 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+      }
+      #postContent code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+      }
+      #postContent blockquote {
+        border-left: 4px solid var(--accent-start);
+        padding-left: 16px;
+        margin: 12px 0;
+        color: var(--text-secondary);
+        font-style: italic;
+      }
+      #postContent ul, #postContent ol {
+        padding-left: 24px;
+        margin: 8px 0;
+      }
+      #postContent li {
+        margin: 4px 0;
+      }
+      #postContent h1, #postContent h2, #postContent h3 {
+        margin: 16px 0 8px;
+        font-weight: 700;
+      }
+      #postContent h1 { font-size: 1.75rem; }
+      #postContent h2 { font-size: 1.5rem; }
+      #postContent h3 { font-size: 1.25rem; }
+      .forum-detail-content a {
+        color: var(--accent-start);
+        text-decoration: underline;
+      }
+      .forum-detail-content img {
+        max-width: 100%;
+        border-radius: 8px;
+        margin: 8px 0;
+      }
+      .forum-detail-content pre {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 12px 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+      }
+      .forum-detail-content code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+      }
+      .forum-detail-content blockquote {
+        border-left: 4px solid var(--accent-start);
+        padding-left: 16px;
+        margin: 12px 0;
+        color: var(--text-secondary);
+        font-style: italic;
+      }
+      .forum-detail-content ul, .forum-detail-content ol {
+        padding-left: 24px;
+        margin: 8px 0;
+      }
+      .forum-detail-content li {
+        margin: 4px 0;
+      }
+      .forum-detail-content h1, .forum-detail-content h2, .forum-detail-content h3 {
+        margin: 16px 0 8px;
+        font-weight: 700;
+      }
+      .forum-detail-content h1 { font-size: 1.75rem; }
+      .forum-detail-content h2 { font-size: 1.5rem; }
+      .forum-detail-content h3 { font-size: 1.25rem; }
+      .forum-detail-content p {
+        margin: 8px 0;
+      }
     `;
     document.head.appendChild(forumStyle);
+
+    initRichTextEditor();
+  }
+
+  function initRichTextEditor() {
+    const editor = document.getElementById('postContent');
+    if (!editor) return;
+
+    document.querySelectorAll('.rich-tool-btn[data-cmd]').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'createLink') {
+          const url = prompt('请输入链接地址：', 'https://');
+          if (url) {
+            document.execCommand('createLink', false, url);
+          }
+        } else if (cmd === 'insertImage') {
+          const url = prompt('请输入图片地址：', 'https://');
+          if (url) {
+            document.execCommand('insertImage', false, url);
+          }
+        } else if (cmd === 'formatBlock') {
+          const value = btn.value;
+          if (value) {
+            document.execCommand('formatBlock', false, value);
+          }
+          setTimeout(() => { btn.value = ''; }, 10);
+        } else if (cmd === 'fontSize') {
+          const value = btn.value;
+          if (value) {
+            document.execCommand('fontSize', false, value);
+          }
+          setTimeout(() => { btn.value = ''; }, 10);
+        } else {
+          document.execCommand(cmd, false, null);
+        }
+        updateToolbarState();
+        editor.focus();
+      });
+    });
+
+    function updateToolbarState() {
+      const commands = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList', 'justifyLeft', 'justifyCenter', 'justifyRight'];
+      commands.forEach((cmd) => {
+        const btn = document.querySelector(`.rich-tool-btn[data-cmd="${cmd}"]`);
+        if (btn) {
+          btn.classList.toggle('active', document.queryCommandState(cmd));
+        }
+      });
+    }
+
+    editor.addEventListener('keyup', updateToolbarState);
+    editor.addEventListener('mouseup', updateToolbarState);
+    editor.addEventListener('focus', updateToolbarState);
+
+    editor.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'b') {
+          e.preventDefault();
+          document.execCommand('bold', false, null);
+          updateToolbarState();
+        } else if (key === 'i') {
+          e.preventDefault();
+          document.execCommand('italic', false, null);
+          updateToolbarState();
+        } else if (key === 'u') {
+          e.preventDefault();
+          document.execCommand('underline', false, null);
+          updateToolbarState();
+        } else if (key === 'k') {
+          e.preventDefault();
+          const url = prompt('请输入链接地址：', 'https://');
+          if (url) {
+            document.execCommand('createLink', false, url);
+          }
+        }
+      }
+    });
+
+    editor.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
   }
 
   function initBadgePage() {
