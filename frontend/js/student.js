@@ -2582,6 +2582,8 @@
         showToast('评教成功，积分已增加', 'success');
         closeEvaluateModal();
         loadBadgeData();
+        loadPointRecords();
+        loadLeaderboard();
         loadEvaluations();
       } else {
         showToast((data && data.message) || '评教失败', 'error');
