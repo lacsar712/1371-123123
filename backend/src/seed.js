@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const logger = require('./logger');
-const { Admin, Student, Teacher, Course, Enrollment, Exam } = require('./models');
+const { Admin, Student, Teacher, Course, Enrollment, Exam, TrainingProgram, TrainingProgramCourse } = require('./models');
 const { ensureBadgesSeeded } = require('./badgeRules');
 
 function hashPassword(password) {
@@ -19,17 +19,24 @@ async function ensureTestAccounts() {
     await admin.update({ passwordHash: TEST_PASSWORD_HASH });
   }
   const testStudents = [
-    { studentNo: 'S2024001', name: '张三' },
-    { studentNo: 'S2024002', name: '李四' },
-    { studentNo: 'S2024003', name: '王五' },
+    { studentNo: 'S2024001', name: '张三', major: '计算机科学与技术', enrollmentYear: 2024 },
+    { studentNo: 'S2024002', name: '李四', major: '计算机科学与技术', enrollmentYear: 2024 },
+    { studentNo: 'S2024003', name: '王五', major: '软件工程', enrollmentYear: 2024 },
   ];
   for (const s of testStudents) {
     const [student, created] = await Student.findOrCreate({
       where: { studentNo: s.studentNo },
-      defaults: { name: s.name, passwordHash: TEST_PASSWORD_HASH },
+      defaults: { name: s.name, passwordHash: TEST_PASSWORD_HASH, major: s.major, enrollmentYear: s.enrollmentYear },
     });
-    if (!created && student.passwordHash !== TEST_PASSWORD_HASH) {
-      await student.update({ passwordHash: TEST_PASSWORD_HASH, name: s.name });
+    if (!created) {
+      const updateData = {};
+      if (student.passwordHash !== TEST_PASSWORD_HASH) updateData.passwordHash = TEST_PASSWORD_HASH;
+      if (student.name !== s.name) updateData.name = s.name;
+      if (student.major !== s.major) updateData.major = s.major;
+      if (student.enrollmentYear !== s.enrollmentYear) updateData.enrollmentYear = s.enrollmentYear;
+      if (Object.keys(updateData).length > 0) {
+        await student.update(updateData);
+      }
     }
   }
   const testTeachers = [
@@ -136,6 +143,78 @@ async function seed() {
       await Exam.bulkCreate(examData);
       logger.info('Seed exams completed');
     }
+  }
+
+  const tpCount = await TrainingProgram.count();
+  if (tpCount === 0) {
+    const allCourses = await Course.findAll({ attributes: ['id', 'code', 'credit'] });
+    const courseMap = {};
+    allCourses.forEach((c) => {
+      courseMap[c.code] = c;
+    });
+
+    const programs = [
+      {
+        major: '计算机科学与技术',
+        enrollmentYear: 2024,
+        name: '计算机科学与技术专业本科培养方案',
+        totalCreditsRequired: 140,
+        requiredCredits: 80,
+        limitedElectiveCredits: 35,
+        electiveCredits: 25,
+        courses: [
+          { code: 'MATH201', category: 'required' },
+          { code: 'ENG101', category: 'required' },
+          { code: 'CS101', category: 'required' },
+          { code: 'CS102', category: 'limited_elective' },
+          { code: 'CS103', category: 'limited_elective' },
+        ],
+      },
+      {
+        major: '软件工程',
+        enrollmentYear: 2024,
+        name: '软件工程专业本科培养方案',
+        totalCreditsRequired: 145,
+        requiredCredits: 85,
+        limitedElectiveCredits: 35,
+        electiveCredits: 25,
+        courses: [
+          { code: 'MATH201', category: 'required' },
+          { code: 'ENG101', category: 'required' },
+          { code: 'CS101', category: 'required' },
+          { code: 'CS103', category: 'required' },
+          { code: 'CS102', category: 'limited_elective' },
+        ],
+      },
+    ];
+
+    for (const p of programs) {
+      const program = await TrainingProgram.create({
+        major: p.major,
+        enrollmentYear: p.enrollmentYear,
+        name: p.name,
+        totalCreditsRequired: p.totalCreditsRequired,
+        requiredCredits: p.requiredCredits,
+        limitedElectiveCredits: p.limitedElectiveCredits,
+        electiveCredits: p.electiveCredits,
+      });
+
+      const pcData = [];
+      for (const pc of p.courses) {
+        const course = courseMap[pc.code];
+        if (course) {
+          pcData.push({
+            programId: program.id,
+            courseId: course.id,
+            category: pc.category,
+          });
+        }
+      }
+      if (pcData.length > 0) {
+        await TrainingProgramCourse.bulkCreate(pcData);
+      }
+    }
+    logger.info('Seed training programs completed');
   }
 }
 

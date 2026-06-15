@@ -37,6 +37,10 @@
           <span class="nav-icon" aria-hidden="true">💬</span>
           <span>内容审核</span>
         </a>
+        <a href="#" data-page="training-program">
+          <span class="nav-icon" aria-hidden="true">📚</span>
+          <span>培养方案</span>
+        </a>
         <a href="#" data-page="backup">
           <span class="nav-icon" aria-hidden="true">💾</span>
           <span>数据备份</span>
@@ -394,7 +398,123 @@
             </table>
           </div>
         </div>
+
+        <div id="page-training-program" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title">培养方案管理</h2>
+            <div class="toolbar-actions">
+              <button type="button" class="btn btn-primary" id="addProgramBtn">＋ 新增培养方案</button>
+            </div>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>专业</th>
+                  <th>入学年份</th>
+                  <th>方案名称</th>
+                  <th>毕业总学分</th>
+                  <th>必修/限选/任选</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="programTableBody">
+                <tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="page-training-program-detail" style="display:none;">
+          <section class="content-toolbar">
+            <h2 class="toolbar-title" id="programDetailTitle">培养方案详情</h2>
+            <div class="toolbar-actions">
+              <button type="button" class="btn btn-ghost" id="backToProgramList">← 返回列表</button>
+              <button type="button" class="btn btn-primary" id="editProgramBtn">编辑方案</button>
+            </div>
+          </section>
+          <div id="programInfoCard" style="background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--bg-glass-border);border-radius:var(--radius);padding:20px;margin-bottom:20px;">
+            <div id="programInfoContent"></div>
+          </div>
+          <div class="drag-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <div class="drag-panel-left">
+              <div style="background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--bg-glass-border);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+                <h3 style="margin:0 0 12px;font-size:1rem;">📋 可选课程</h3>
+                <p style="color:var(--text-secondary);font-size:0.8125rem;margin:0 0 12px;">拖拽课程到右侧对应分类</p>
+                <input type="text" id="courseSearch" placeholder="搜索课程名称或代码" style="width:100%;height:40px;padding:0 12px;background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;color:var(--text-primary);font-size:0.875rem;margin-bottom:12px;" />
+                <div id="availableCourses" class="drag-course-list" style="max-height:500px;overflow-y:auto;"></div>
+              </div>
+            </div>
+            <div class="drag-panel-right">
+              <div class="drop-zone" data-category="required" style="background:rgba(239,68,68,0.08);border:2px dashed rgba(239,68,68,0.3);border-radius:var(--radius);padding:16px;margin-bottom:16px;min-height:120px;transition:all 0.2s;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h3 style="margin:0;font-size:1rem;color:#ef4444;">🔴 必修课程</h3>
+                  <span id="requiredCreditInfo" style="color:var(--text-secondary);font-size:0.8125rem;"></span>
+                </div>
+                <div id="requiredCourses" class="drop-course-list"></div>
+              </div>
+              <div class="drop-zone" data-category="limited_elective" style="background:rgba(245,158,11,0.08);border:2px dashed rgba(245,158,11,0.3);border-radius:var(--radius);padding:16px;margin-bottom:16px;min-height:120px;transition:all 0.2s;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h3 style="margin:0;font-size:1rem;color:#f59e0b;">🟡 限选课程</h3>
+                  <span id="limitedElectiveCreditInfo" style="color:var(--text-secondary);font-size:0.8125rem;"></span>
+                </div>
+                <div id="limitedElectiveCourses" class="drop-course-list"></div>
+              </div>
+              <div class="drop-zone" data-category="elective" style="background:rgba(34,197,94,0.08);border:2px dashed rgba(34,197,94,0.3);border-radius:var(--radius);padding:16px;min-height:120px;transition:all 0.2s;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h3 style="margin:0;font-size:1rem;color:#22c55e;">🟢 任选课程</h3>
+                  <span id="electiveCreditInfo" style="color:var(--text-secondary);font-size:0.8125rem;"></span>
+                </div>
+                <div id="electiveCourses" class="drop-course-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <div id="programModalOverlay" class="modal-overlay">
+    <div class="modal">
+      <h2 id="programModalTitle">新增培养方案</h2>
+      <form id="programForm">
+        <input type="hidden" id="programId" name="id" />
+        <div class="form-group">
+          <label for="programMajor">专业</label>
+          <input type="text" id="programMajor" name="major" placeholder="例如：计算机科学与技术" required />
+        </div>
+        <div class="form-group">
+          <label for="programYear">入学年份</label>
+          <input type="number" id="programYear" name="enrollmentYear" min="2000" max="2100" placeholder="例如：2024" required />
+        </div>
+        <div class="form-group">
+          <label for="programName">方案名称</label>
+          <input type="text" id="programName" name="name" placeholder="例如：2024级计算机科学与技术培养方案" required />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label for="totalCredits">毕业总学分要求</label>
+            <input type="number" id="totalCredits" name="totalCreditsRequired" min="0" placeholder="例如：140" required />
+          </div>
+          <div class="form-group">
+            <label for="requiredCredits">必修最低学分</label>
+            <input type="number" id="requiredCredits" name="requiredCredits" min="0" placeholder="例如：80" required />
+          </div>
+          <div class="form-group">
+            <label for="limitedElectiveCredits">限选最低学分</label>
+            <input type="number" id="limitedElectiveCredits" name="limitedElectiveCredits" min="0" placeholder="例如：30" required />
+          </div>
+          <div class="form-group">
+            <label for="electiveCredits">任选最低学分</label>
+            <input type="number" id="electiveCredits" name="electiveCredits" min="0" placeholder="例如：30" required />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="programModalCancel">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
     </div>
   </div>
 

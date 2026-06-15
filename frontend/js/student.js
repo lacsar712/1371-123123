@@ -1454,10 +1454,172 @@
     document.getElementById('gradePage').style.display = 'none';
     document.getElementById('forumListPage').style.display = 'none';
     document.getElementById('forumDetailPage').style.display = 'none';
+    document.getElementById('trainingProgramPage').style.display = 'none';
     if (examCountdownTimer) {
       clearInterval(examCountdownTimer);
       examCountdownTimer = null;
     }
+  }
+
+  function showTrainingProgramPage() {
+    hideAllPages();
+    document.getElementById('trainingProgramPage').style.display = 'block';
+    loadStudentTrainingProgram();
+  }
+
+  function hideTrainingProgramPage() {
+    document.getElementById('trainingProgramPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadStudentTrainingProgram() {
+    const container = document.getElementById('trainingProgramContent');
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>';
+    try {
+      const { data } = await api(`/api/training-programs/student/${user.id}`);
+      if (data && data.ok && data.data) {
+        renderTrainingProgram(data.data);
+      } else {
+        container.innerHTML = `<div style="text-align:center;padding:48px;">
+          <div style="font-size:3rem;margin-bottom:16px;">📋</div>
+          <div style="color:var(--text-secondary);font-size:1rem;">${(data && data.message) || '暂无培养方案数据'}</div>
+        </div>`;
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">网络错误</div>';
+    }
+  }
+
+  function renderTrainingProgram(programData) {
+    const { program, courses, progress } = programData;
+    if (!program) {
+      document.getElementById('trainingProgramContent').innerHTML = `
+        <div style="text-align:center;padding:48px;">
+          <div style="font-size:3rem;margin-bottom:16px;">📋</div>
+          <div style="color:var(--text-secondary);font-size:1rem;">暂无培养方案数据</div>
+        </div>`;
+      return;
+    }
+
+    document.getElementById('trainingProgramTitle').textContent = `${program.name} - ${program.enrollmentYear}级 ${program.major}`;
+
+    const categoryMap = {
+      required: { label: '必修', color: '#ef4444', key: 'required' },
+      limited_elective: { label: '限选', color: '#f59e0b', key: 'limitedElective' },
+      elective: { label: '任选', color: '#10b981', key: 'elective' },
+    };
+
+    const groupedCourses = courses || { required: [], limited_elective: [], elective: [] };
+
+    let html = '';
+
+    ['required', 'limited_elective', 'elective'].forEach((cat) => {
+      const info = categoryMap[cat];
+      const list = groupedCourses[cat] || [];
+      const requiredCredits = program[`${info.key}Credits`] || 0;
+      const earnedKey = `earned${info.key.charAt(0).toUpperCase() + info.key.slice(1)}Credits`;
+      const earnedCredits = (progress && progress[earnedKey] !== undefined ? progress[earnedKey] : 0);
+
+      html += `
+        <div class="tp-category-section">
+          <div class="tp-category-header" style="border-color:${info.color}30;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="tp-category-badge" style="background:${info.color}20;color:${info.color};border-color:${info.color}40;">${info.label}</span>
+              <span class="tp-category-title">${info.label}课程</span>
+            </div>
+            <span class="tp-category-credits" style="color:${info.color};">已修 ${earnedCredits} / 要求 ${requiredCredits} 学分</span>
+          </div>
+          <div class="tp-course-list">
+            ${list.length ? list.map((pc) => {
+              const status = pc.status || 'not_taken';
+              let statusHtml = '';
+              if (status === 'completed') {
+                statusHtml = '<span class="tp-status tp-status-completed">✓ 已修过</span>';
+              } else if (status === 'studying') {
+                statusHtml = '<span class="tp-status tp-status-studying">📖 在修</span>';
+              } else {
+                statusHtml = '<span class="tp-status tp-status-not-taken">○ 未修</span>';
+              }
+              return `
+                <div class="tp-course-item">
+                  <div class="tp-course-info">
+                    <div class="tp-course-code">${escapeHtml(pc.code || '')}</div>
+                    <div class="tp-course-name">${escapeHtml(pc.name || '')}</div>
+                    <div class="tp-course-meta">
+                      <span>${pc.credit ?? 0} 学分</span>
+                      ${pc.grade != null ? `<span style="color:var(--text-secondary);">成绩：${pc.grade}</span>` : ''}
+                    </div>
+                  </div>
+                  ${statusHtml}
+                </div>
+              `;
+            }).join('') : '<div style="text-align:center;color:var(--text-secondary);padding:24px;">暂无课程</div>'}
+          </div>
+        </div>
+      `;
+    });
+
+    html += renderProgressBar(progress, program);
+
+    const container = document.getElementById('trainingProgramContent');
+    container.innerHTML = html;
+
+    const style = document.createElement('style');
+    style.id = 'trainingProgramStyle';
+    if (!document.getElementById('trainingProgramStyle')) {
+      style.textContent = `
+        .tp-category-section{margin-bottom:24px;}
+        .tp-category-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--bg-glass);border-left:4px solid;border-radius:8px 8px 0 0;flex-wrap:wrap;gap:12px;}
+        .tp-category-badge{display:inline-block;padding:4px 12px;border-radius:9999px;font-size:0.75rem;font-weight:600;border:1px solid;}
+        .tp-category-title{font-size:1.0625rem;font-weight:600;color:var(--text-primary);}
+        .tp-category-credits{font-size:0.875rem;font-weight:600;}
+        .tp-course-list{background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--bg-glass-border);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:4px;}
+        .tp-course-item{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--bg-glass-border);}
+        .tp-course-item:last-child{border-bottom:none;}
+        .tp-course-item:hover{background:rgba(255,255,255,0.02);}
+        .tp-course-info{flex:1;}
+        .tp-course-code{font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px;}
+        .tp-course-name{font-size:0.9375rem;font-weight:500;color:var(--text-primary);margin-bottom:4px;}
+        .tp-course-meta{font-size:0.8125rem;color:var(--text-secondary);display:flex;gap:16px;}
+        .tp-status{display:inline-block;padding:6px 14px;border-radius:9999px;font-size:0.75rem;font-weight:600;white-space:nowrap;}
+        .tp-status-completed{background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);}
+        .tp-status-studying{background:rgba(59,130,246,0.12);color:#3b82f6;border:1px solid rgba(59,130,246,0.25);}
+        .tp-status-not-taken{background:rgba(107,114,128,0.12);color:#6b7280;border:1px solid rgba(107,114,128,0.25);}
+        .tp-progress-section{margin-top:32px;padding:28px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius);}
+        .tp-progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;}
+        .tp-progress-title{font-size:1.0625rem;font-weight:600;color:var(--text-primary);}
+        .tp-progress-credits{font-size:1.25rem;font-weight:700;color:#6366f1;}
+        .tp-progress-bar-wrap{width:100%;height:16px;background:rgba(255,255,255,0.06);border-radius:9999px;overflow:hidden;margin-bottom:12px;}
+        .tp-progress-bar{height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:9999px;transition:width 0.5s ease;}
+        .tp-progress-info{display:flex;justify-content:space-between;align-items:center;font-size:0.875rem;flex-wrap:wrap;gap:8px;}
+        .tp-progress-text{color:var(--text-secondary);}
+        .tp-remaining{color:#f59e0b;font-weight:600;}
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  function renderProgressBar(progress, program) {
+    const totalEarned = progress ? progress.earnedTotalCredits || 0 : 0;
+    const totalRequired = program ? program.totalCreditsRequired || 0 : 0;
+    const remaining = progress ? progress.remainingCredits || Math.max(0, totalRequired - totalEarned) : Math.max(0, totalRequired - totalEarned);
+    const percent = progress && progress.progressPercent != null ? progress.progressPercent : (totalRequired > 0 ? Math.min(100, (totalEarned / totalRequired) * 100) : 0);
+
+    return `
+      <div class="tp-progress-section">
+        <div class="tp-progress-header">
+          <div class="tp-progress-title">🎓 毕业进度</div>
+          <div class="tp-progress-credits">${totalEarned} / ${totalRequired} 学分</div>
+        </div>
+        <div class="tp-progress-bar-wrap">
+          <div class="tp-progress-bar" style="width:${percent}%;"></div>
+        </div>
+        <div class="tp-progress-info">
+          <span class="tp-progress-text">已完成 ${percent.toFixed(1)}%</span>
+          <span class="tp-remaining">距离毕业还差 ${remaining} 学分</span>
+        </div>
+      </div>
+    `;
   }
 
   let examCountdownTimer = null;
@@ -2490,6 +2652,7 @@
       const gradePage = document.getElementById('gradePage');
       const forumListPage = document.getElementById('forumListPage');
       const forumDetailPage = document.getElementById('forumDetailPage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (calPage && calPage.style.display === 'block') {
         calPage.style.display = 'block';
       } else if (badgePage && badgePage.style.display === 'block') {
@@ -2502,6 +2665,8 @@
         forumListPage.style.display = 'block';
       } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
         forumDetailPage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2512,10 +2677,13 @@
       document.getElementById('badgePage').style.display = 'none';
       const forumListPage = document.getElementById('forumListPage');
       const forumDetailPage = document.getElementById('forumDetailPage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (forumListPage && forumListPage.style.display === 'block') {
         forumListPage.style.display = 'block';
       } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
         forumDetailPage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2529,6 +2697,7 @@
       const gradePage = document.getElementById('gradePage');
       const forumListPage = document.getElementById('forumListPage');
       const forumDetailPage = document.getElementById('forumDetailPage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (badgePage && badgePage.style.display === 'block') {
         badgePage.style.display = 'block';
       } else if (examPage && examPage.style.display === 'block') {
@@ -2539,6 +2708,8 @@
         forumListPage.style.display = 'block';
       } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
         forumDetailPage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2553,10 +2724,13 @@
       }
       const forumListPage = document.getElementById('forumListPage');
       const forumDetailPage = document.getElementById('forumDetailPage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (forumListPage && forumListPage.style.display === 'block') {
         forumListPage.style.display = 'block';
       } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
         forumDetailPage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2565,6 +2739,23 @@
     const origHideGradePage = hideGradePage;
     hideGradePage = function () {
       document.getElementById('gradePage').style.display = 'none';
+      const forumListPage = document.getElementById('forumListPage');
+      const forumDetailPage = document.getElementById('forumDetailPage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
+      if (forumListPage && forumListPage.style.display === 'block') {
+        forumListPage.style.display = 'block';
+      } else if (forumDetailPage && forumDetailPage.style.display === 'block') {
+        forumDetailPage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
+      } else {
+        document.querySelector('main.student-main').style.display = 'block';
+      }
+    };
+
+    const origHideTrainingProgramPage = hideTrainingProgramPage;
+    hideTrainingProgramPage = function () {
+      document.getElementById('trainingProgramPage').style.display = 'none';
       const forumListPage = document.getElementById('forumListPage');
       const forumDetailPage = document.getElementById('forumDetailPage');
       if (forumListPage && forumListPage.style.display === 'block') {
@@ -2899,6 +3090,7 @@
       const badgePage = document.getElementById('badgePage');
       const examPage = document.getElementById('examPage');
       const gradePage = document.getElementById('gradePage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (calPage && calPage.style.display === 'block') {
         calPage.style.display = 'block';
       } else if (badgePage && badgePage.style.display === 'block') {
@@ -2907,6 +3099,8 @@
         examPage.style.display = 'block';
       } else if (gradePage && gradePage.style.display === 'block') {
         gradePage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2940,12 +3134,15 @@
       const badgePage = document.getElementById('badgePage');
       const examPage = document.getElementById('examPage');
       const gradePage = document.getElementById('gradePage');
+      const trainingProgramPage = document.getElementById('trainingProgramPage');
       if (badgePage && badgePage.style.display === 'block') {
         badgePage.style.display = 'block';
       } else if (examPage && examPage.style.display === 'block') {
         examPage.style.display = 'block';
       } else if (gradePage && gradePage.style.display === 'block') {
         gradePage.style.display = 'block';
+      } else if (trainingProgramPage && trainingProgramPage.style.display === 'block') {
+        trainingProgramPage.style.display = 'block';
       } else {
         document.querySelector('main.student-main').style.display = 'block';
       }
@@ -2957,6 +3154,8 @@
     document.getElementById('examBackBtn').addEventListener('click', hideExamPage);
     document.getElementById('gradeBtn').addEventListener('click', showGradePage);
     document.getElementById('gradeBackBtn').addEventListener('click', hideGradePage);
+    document.getElementById('trainingProgramBtn').addEventListener('click', showTrainingProgramPage);
+    document.getElementById('trainingProgramBackBtn').addEventListener('click', hideTrainingProgramPage);
     document.getElementById('loadMorePointsBtn').addEventListener('click', () => loadPointRecords(true));
     document.getElementById('cancelEvaluateBtn').addEventListener('click', closeEvaluateModal);
     document.getElementById('submitEvaluateBtn').addEventListener('click', submitEvaluation);

@@ -65,6 +65,8 @@
     document.getElementById('page-tickets').style.display = page === 'tickets' ? 'block' : 'none';
     document.getElementById('page-ticket-detail').style.display = page === 'ticket-detail' ? 'block' : 'none';
     document.getElementById('page-forum').style.display = page === 'forum' ? 'block' : 'none';
+    document.getElementById('page-training-program').style.display = page === 'training-program' ? 'block' : 'none';
+    document.getElementById('page-training-program-detail').style.display = page === 'training-program-detail' ? 'block' : 'none';
     document.getElementById('page-backup').style.display = page === 'backup' ? 'block' : 'none';
 
     const headerTitle = document.querySelector('.admin-header h1');
@@ -84,6 +86,9 @@
     } else if (page === 'forum') {
       headerTitle.textContent = '内容审核';
       headerSubtitle.textContent = '审核讨论区帖子与评论内容';
+    } else if (page === 'training-program' || page === 'training-program-detail') {
+      headerTitle.textContent = '培养方案';
+      headerSubtitle.textContent = '管理各专业各年级的培养方案与课程配置';
     } else if (page === 'backup') {
       headerTitle.textContent = '数据备份';
       headerSubtitle.textContent = '一键导出与导入系统核心数据';
@@ -103,6 +108,9 @@
     }
     if (page === 'backup') {
       loadBackupRecords();
+    }
+    if (page === 'training-program') {
+      loadTrainingPrograms();
     }
   }
 
@@ -1316,6 +1324,436 @@
     } catch (e) {}
   }
 
+  // ========== 培养方案管理 ==========
+  let currentProgramId = null;
+  let currentProgram = null;
+  let allCourses = [];
+  let programCourses = { required: [], limited_elective: [], elective: [] };
+  let draggedCourse = null;
+
+  async function loadTrainingPrograms() {
+    const tbody = document.getElementById('programTableBody');
+    const { data } = await api('/api/training-programs');
+    if (!data || !data.ok || !Array.isArray(data.data)) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      return;
+    }
+    const rows = data.data;
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);">暂无培养方案</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map(
+        (p) => `
+        <tr>
+          <td>${p.id}</td>
+          <td>${escapeHtml(p.major)}</td>
+          <td>${p.enrollmentYear}</td>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${p.totalCreditsRequired}</td>
+          <td>${p.requiredCredits} / ${p.limitedElectiveCredits} / ${p.electiveCredits}</td>
+          <td>
+            <button type="button" class="btn btn-ghost btn-sm view-program-btn" data-id="${p.id}">配置课程</button>
+            <button type="button" class="btn btn-ghost btn-sm edit-program-btn" data-id="${p.id}">编辑</button>
+            <button type="button" class="btn btn-danger btn-sm delete-program-btn" data-id="${p.id}">删除</button>
+          </td>
+        </tr>`
+      )
+      .join('');
+
+    tbody.querySelectorAll('.view-program-btn').forEach((btn) => {
+      btn.addEventListener('click', () => viewProgramDetail(parseInt(btn.dataset.id, 10)));
+    });
+    tbody.querySelectorAll('.edit-program-btn').forEach((btn) => {
+      btn.addEventListener('click', () => openProgramEdit(parseInt(btn.dataset.id, 10)));
+    });
+    tbody.querySelectorAll('.delete-program-btn').forEach((btn) => {
+      btn.addEventListener('click', () => deleteProgram(parseInt(btn.dataset.id, 10)));
+    });
+  }
+
+  const programModal = document.getElementById('programModalOverlay');
+  const programForm = document.getElementById('programForm');
+  const programModalTitle = document.getElementById('programModalTitle');
+
+  function openProgramAdd() {
+    document.getElementById('programId').value = '';
+    document.getElementById('programMajor').value = '';
+    document.getElementById('programYear').value = '';
+    document.getElementById('programName').value = '';
+    document.getElementById('totalCredits').value = '';
+    document.getElementById('requiredCredits').value = '';
+    document.getElementById('limitedElectiveCredits').value = '';
+    document.getElementById('electiveCredits').value = '';
+    programModalTitle.textContent = '新增培养方案';
+    programModal.classList.add('show');
+  }
+
+  async function openProgramEdit(id) {
+    const { data } = await api('/api/training-programs/' + id);
+    if (!data || !data.ok) {
+      showToast('加载失败', 'error');
+      return;
+    }
+    const p = data.data;
+    document.getElementById('programId').value = id;
+    document.getElementById('programMajor').value = p.major;
+    document.getElementById('programYear').value = p.enrollmentYear;
+    document.getElementById('programName').value = p.name;
+    document.getElementById('totalCredits').value = p.totalCreditsRequired;
+    document.getElementById('requiredCredits').value = p.requiredCredits;
+    document.getElementById('limitedElectiveCredits').value = p.limitedElectiveCredits;
+    document.getElementById('electiveCredits').value = p.electiveCredits;
+    programModalTitle.textContent = '编辑培养方案';
+    programModal.classList.add('show');
+  }
+
+  function closeProgramModal() {
+    programModal.classList.remove('show');
+  }
+
+  async function deleteProgram(id) {
+    if (!confirm('确定删除该培养方案？关联的课程配置也将被删除。')) return;
+    const { data } = await api('/api/training-programs/' + id, { method: 'DELETE' });
+    if (data && data.ok) {
+      showToast('已删除', 'success');
+      loadTrainingPrograms();
+    } else {
+      showToast((data && data.message) || '删除失败', 'error');
+    }
+  }
+
+  programForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('programId').value.trim();
+    const payload = {
+      major: document.getElementById('programMajor').value.trim(),
+      enrollmentYear: parseInt(document.getElementById('programYear').value, 10),
+      name: document.getElementById('programName').value.trim(),
+      totalCreditsRequired: parseInt(document.getElementById('totalCredits').value, 10),
+      requiredCredits: parseInt(document.getElementById('requiredCredits').value, 10),
+      limitedElectiveCredits: parseInt(document.getElementById('limitedElectiveCredits').value, 10),
+      electiveCredits: parseInt(document.getElementById('electiveCredits').value, 10),
+    };
+
+    if (!payload.major || !payload.name || Number.isNaN(payload.enrollmentYear) || Number.isNaN(payload.totalCreditsRequired)) {
+      showToast('请填写完整且有效的字段', 'error');
+      return;
+    }
+
+    let result;
+    if (id) {
+      result = await api('/api/training-programs/' + id, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } else {
+      result = await api('/api/training-programs', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (result.data && result.data.ok) {
+      showToast('保存成功', 'success');
+      closeProgramModal();
+      loadTrainingPrograms();
+    } else {
+      showToast((result.data && result.data.message) || '保存失败', 'error');
+    }
+  });
+
+  async function viewProgramDetail(id) {
+    currentProgramId = id;
+    const [programResult, coursesResult] = await Promise.all([
+      api('/api/training-programs/' + id),
+      api('/api/courses'),
+    ]);
+
+    if (!programResult.data || !programResult.data.ok) {
+      showToast('加载培养方案失败', 'error');
+      return;
+    }
+    if (!coursesResult.data || !coursesResult.data.ok) {
+      showToast('加载课程列表失败', 'error');
+      return;
+    }
+
+    const program = programResult.data.data;
+    currentProgram = program;
+    allCourses = coursesResult.data.data || [];
+    programCourses = program.courses || { required: [], limited_elective: [], elective: [] };
+
+    document.getElementById('programDetailTitle').textContent = program.name;
+    document.getElementById('programInfoContent').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;">
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">专业</div>
+          <div style="font-weight:600;">${escapeHtml(program.major)}</div>
+        </div>
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">入学年份</div>
+          <div style="font-weight:600;">${program.enrollmentYear}</div>
+        </div>
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">毕业总学分要求</div>
+          <div style="font-weight:600;color:var(--accent-start);">${program.totalCreditsRequired} 学分</div>
+        </div>
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">必修最低学分</div>
+          <div style="font-weight:600;color:#ef4444;">${program.requiredCredits} 学分</div>
+        </div>
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">限选最低学分</div>
+          <div style="font-weight:600;color:#f59e0b;">${program.limitedElectiveCredits} 学分</div>
+        </div>
+        <div>
+          <div style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:4px;">任选最低学分</div>
+          <div style="font-weight:600;color:#22c55e;">${program.electiveCredits} 学分</div>
+        </div>
+      </div>
+    `;
+
+    renderAvailableCourses();
+    renderProgramCourses();
+    updateCreditInfo();
+    showPage('training-program-detail');
+  }
+
+  function renderAvailableCourses() {
+    const container = document.getElementById('availableCourses');
+    const keyword = (document.getElementById('courseSearch')?.value || '').toLowerCase();
+
+    const assignedCourseIds = new Set([
+      ...programCourses.required.map((c) => c.courseId),
+      ...programCourses.limited_elective.map((c) => c.courseId),
+      ...programCourses.elective.map((c) => c.courseId),
+    ]);
+
+    const available = allCourses.filter(
+      (c) =>
+        !assignedCourseIds.has(c.id) &&
+        (!keyword || c.name.toLowerCase().includes(keyword) || c.code.toLowerCase().includes(keyword))
+    );
+
+    if (!available.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:24px;">暂无可用课程</div>';
+      return;
+    }
+
+    container.innerHTML = available
+      .map(
+        (c) => `
+        <div class="drag-course-item" draggable="true" data-course-id="${c.id}" style="background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:grab;transition:all 0.2s;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-weight:600;">${escapeHtml(c.name)}</div>
+              <div style="color:var(--text-secondary);font-size:0.8125rem;">${escapeHtml(c.code)}</div>
+            </div>
+            <span class="badge" style="background:rgba(99,102,241,0.15);color:#a78bfa;">${c.credit} 学分</span>
+          </div>
+        </div>`
+      )
+      .join('');
+
+    container.querySelectorAll('.drag-course-item').forEach((item) => {
+      item.addEventListener('dragstart', handleDragStart);
+      item.addEventListener('dragend', handleDragEnd);
+    });
+  }
+
+  function renderProgramCourses() {
+    renderCategoryCourses('required', 'requiredCourses');
+    renderCategoryCourses('limited_elective', 'limitedElectiveCourses');
+    renderCategoryCourses('elective', 'electiveCourses');
+  }
+
+  function renderCategoryCourses(category, containerId) {
+    const container = document.getElementById(containerId);
+    const list = programCourses[category] || [];
+
+    if (!list.length) {
+      container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px;font-size:0.8125rem;">拖拽课程到此处</div>`;
+      return;
+    }
+
+    container.innerHTML = list
+      .map(
+        (c) => `
+        <div class="drag-course-item" draggable="true" data-program-course-id="${c.id}" data-course-id="${c.courseId}" data-category="${category}" style="background:rgba(255,255,255,0.04);border:1px solid var(--bg-glass-border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:grab;transition:all 0.2s;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-weight:600;">${escapeHtml(c.name)}</div>
+              <div style="color:var(--text-secondary);font-size:0.8125rem;">${escapeHtml(c.code)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:rgba(99,102,241,0.15);color:#a78bfa;">${c.credit} 学分</span>
+              <button type="button" class="remove-course-btn" data-id="${c.id}" style="background:transparent;border:none;color:var(--text-secondary);cursor:pointer;padding:4px;font-size:1rem;transition:color 0.2s;" title="移除">✕</button>
+            </div>
+          </div>
+        </div>`
+      )
+      .join('');
+
+    container.querySelectorAll('.drag-course-item').forEach((item) => {
+      item.addEventListener('dragstart', handleDragStart);
+      item.addEventListener('dragend', handleDragEnd);
+    });
+
+    container.querySelectorAll('.remove-course-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeCourseFromProgram(parseInt(btn.dataset.id, 10), category);
+      });
+    });
+  }
+
+  function updateCreditInfo() {
+    const sumCredits = (list) => list.reduce((sum, c) => sum + (c.credit || 0), 0);
+
+    const requiredSum = sumCredits(programCourses.required);
+    const limitedSum = sumCredits(programCourses.limited_elective);
+    const electiveSum = sumCredits(programCourses.elective);
+
+    const req = currentProgram || {};
+
+    document.getElementById('requiredCreditInfo').textContent = `${requiredSum} / ${req.requiredCredits || 0} 学分`;
+    document.getElementById('limitedElectiveCreditInfo').textContent = `${limitedSum} / ${req.limitedElectiveCredits || 0} 学分`;
+    document.getElementById('electiveCreditInfo').textContent = `${electiveSum} / ${req.electiveCredits || 0} 学分`;
+  }
+
+  function handleDragStart(e) {
+    draggedCourse = {
+      courseId: parseInt(e.target.dataset.courseId, 10),
+      programCourseId: e.target.dataset.programCourseId ? parseInt(e.target.dataset.programCourseId, 10) : null,
+      category: e.target.dataset.category || null,
+    };
+    e.target.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragEnd(e) {
+    e.target.style.opacity = '1';
+    draggedCourse = null;
+    document.querySelectorAll('.drop-zone').forEach((zone) => {
+      zone.style.borderStyle = 'dashed';
+      zone.style.transform = 'scale(1)';
+    });
+  }
+
+  function initDragAndDrop() {
+    document.querySelectorAll('.drop-zone').forEach((zone) => {
+      zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.style.borderStyle = 'solid';
+        zone.style.transform = 'scale(1.01)';
+        zone.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+      });
+
+      zone.addEventListener('dragleave', () => {
+        zone.style.borderStyle = 'dashed';
+        zone.style.transform = 'scale(1)';
+        zone.style.boxShadow = 'none';
+      });
+
+      zone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        zone.style.borderStyle = 'dashed';
+        zone.style.transform = 'scale(1)';
+        zone.style.boxShadow = 'none';
+
+        if (!draggedCourse || !currentProgramId) return;
+
+        const targetCategory = zone.dataset.category;
+
+        if (draggedCourse.programCourseId && draggedCourse.category) {
+          if (draggedCourse.category === targetCategory) return;
+
+          const { data } = await api(`/api/training-programs/${currentProgramId}/courses/${draggedCourse.programCourseId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ category: targetCategory }),
+          });
+
+          if (data && data.ok) {
+            const course = programCourses[draggedCourse.category].find((c) => c.id === draggedCourse.programCourseId);
+            if (course) {
+              course.category = targetCategory;
+              course.categoryText = { required: '必修', limited_elective: '限选', elective: '任选' }[targetCategory];
+              programCourses[draggedCourse.category] = programCourses[draggedCourse.category].filter((c) => c.id !== draggedCourse.programCourseId);
+              programCourses[targetCategory].push(course);
+              renderAvailableCourses();
+              renderProgramCourses();
+              updateCreditInfo();
+              showToast('已移动到' + { required: '必修', limited_elective: '限选', elective: '任选' }[targetCategory], 'success');
+            }
+          } else {
+            showToast((data && data.message) || '移动失败', 'error');
+          }
+        } else {
+          const { data } = await api(`/api/training-programs/${currentProgramId}/courses`, {
+            method: 'POST',
+            body: JSON.stringify({ courseId: draggedCourse.courseId, category: targetCategory }),
+          });
+
+          if (data && data.ok) {
+            programCourses[targetCategory].push(data.data);
+            renderAvailableCourses();
+            renderProgramCourses();
+            updateCreditInfo();
+            showToast('已添加到' + { required: '必修', limited_elective: '限选', elective: '任选' }[targetCategory], 'success');
+          } else {
+            showToast((data && data.message) || '添加失败', 'error');
+          }
+        }
+      });
+    });
+  }
+
+  async function removeCourseFromProgram(pcId, category) {
+    if (!confirm('确定从培养方案中移除该课程？')) return;
+
+    const { data } = await api(`/api/training-programs/${currentProgramId}/courses/${pcId}`, {
+      method: 'DELETE',
+    });
+
+    if (data && data.ok) {
+      programCourses[category] = programCourses[category].filter((c) => c.id !== pcId);
+      renderAvailableCourses();
+      renderProgramCourses();
+      updateCreditInfo();
+      showToast('已移除', 'success');
+    } else {
+      showToast((data && data.message) || '移除失败', 'error');
+    }
+  }
+
+  function initProgramPage() {
+    document.getElementById('addProgramBtn').addEventListener('click', openProgramAdd);
+    document.getElementById('programModalCancel').addEventListener('click', closeProgramModal);
+    document.getElementById('programModalOverlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeProgramModal();
+    });
+    document.getElementById('backToProgramList').addEventListener('click', () => {
+      currentProgramId = null;
+      showPage('training-program');
+    });
+    document.getElementById('editProgramBtn').addEventListener('click', () => {
+      if (currentProgramId) openProgramEdit(currentProgramId);
+    });
+
+    const courseSearch = document.getElementById('courseSearch');
+    if (courseSearch) {
+      courseSearch.addEventListener('input', () => {
+        renderAvailableCourses();
+      });
+    }
+
+    initDragAndDrop();
+  }
+
   function init() {
     user = getStoredUser();
     if (!user) {
@@ -1408,6 +1846,7 @@
     loadCourses();
     initForumPage();
     initBackupPage();
+    initProgramPage();
 
     checkNotifications();
     notificationTimer = setInterval(checkNotifications, 30000);

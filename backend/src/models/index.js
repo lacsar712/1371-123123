@@ -36,6 +36,8 @@ const BackupRecord = require('./BackupRecord')(sequelize);
 const ForumPost = require('./ForumPost')(sequelize);
 const ForumComment = require('./ForumComment')(sequelize);
 const ForumPostLike = require('./ForumPostLike')(sequelize);
+const TrainingProgram = require('./TrainingProgram')(sequelize);
+const TrainingProgramCourse = require('./TrainingProgramCourse')(sequelize);
 
 Student.hasMany(Enrollment, { foreignKey: 'studentId' });
 Student.hasMany(CalendarEvent, { foreignKey: 'userId', constraints: false });
@@ -95,6 +97,11 @@ ForumComment.belongsTo(ForumComment, { foreignKey: 'parentId', as: 'parent' });
 ForumPost.hasMany(ForumPostLike, { foreignKey: 'postId', as: 'likes' });
 ForumPostLike.belongsTo(ForumPost, { foreignKey: 'postId' });
 
+TrainingProgram.hasMany(TrainingProgramCourse, { foreignKey: 'programId', as: 'programCourses' });
+TrainingProgramCourse.belongsTo(TrainingProgram, { foreignKey: 'programId', as: 'program' });
+TrainingProgramCourse.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+Course.hasMany(TrainingProgramCourse, { foreignKey: 'courseId' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -118,4 +125,6 @@ module.exports = {
   ForumPost,
   ForumComment,
   ForumPostLike,
+  TrainingProgram,
+  TrainingProgramCourse,
 };
