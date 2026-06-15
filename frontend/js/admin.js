@@ -526,13 +526,54 @@
     logsEl.scrollTop = logsEl.scrollHeight;
   }
 
-  function updateImportProgress(percent, logsEl, estimatedTotalSteps) {
+  function setImportProgress(percent) {
     const bar = document.getElementById('importProgressBar');
     const text = document.getElementById('importProgressText');
-    const logCount = logsEl.children.length;
-    const realPercent = Math.min(99, Math.max(percent, (logCount / Math.max(estimatedTotalSteps, 20)) * 100));
-    bar.style.width = realPercent + '%';
-    text.textContent = Math.round(realPercent) + '%';
+    const p = Math.max(0, Math.min(100, percent));
+    bar.style.width = p + '%';
+    text.textContent = Math.round(p) + '%';
+  }
+
+  const ESTIMATED_TOTAL_LOGS = 45;
+
+  function updateProgressFromLogs(logsEl, isDone) {
+    if (isDone) {
+      setImportProgress(100);
+      return;
+    }
+    const count = logsEl.children.length;
+    const p = Math.min(95, (count / ESTIMATED_TOTAL_LOGS) * 100);
+    setImportProgress(p);
+  }
+
+  async function parseNdjsonStream(reader, onLine) {
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+      }
+      let idx;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        try {
+          const obj = JSON.parse(line);
+          const stop = onLine(obj);
+          if (stop === false) return;
+        } catch (_) {}
+      }
+      if (done) break;
+    }
+    const tail = buffer.trim();
+    if (tail) {
+      try {
+        const obj = JSON.parse(tail);
+        onLine(obj);
+      } catch (_) {}
+    }
   }
 
   async function doImport() {
@@ -555,42 +596,48 @@
     const logsEl = document.getElementById('importLogs');
     progressCard.style.display = 'block';
     logsEl.innerHTML = '';
-    document.getElementById('importProgressBar').style.width = '0%';
-    document.getElementById('importProgressText').textContent = '0%';
-
-    const estimatedTotalSteps = 40;
-    let progressTimer;
-    let currentPercent = 0;
-    progressTimer = setInterval(() => {
-      currentPercent = Math.min(currentPercent + 2, 95);
-      updateImportProgress(currentPercent, logsEl, estimatedTotalSteps);
-    }, 500);
+    setImportProgress(0);
 
     const fd = new FormData();
     fd.append('file', selectedFile);
     fd.append('mode', mode);
 
+    let finishedOk = false;
+    let finishedMsg = '';
+
     try {
       const r = await fetch(API_BASE + '/api/backup/import', { method: 'POST', body: fd });
-      const data = await r.json().catch(() => ({}));
-      clearInterval(progressTimer);
 
-      if (data && data.data && Array.isArray(data.data.logs)) {
-        logsEl.innerHTML = '';
-        data.data.logs.forEach((l) => addImportLog(logsEl, l));
+      if (!r.ok && !r.body) {
+        throw new Error('服务器响应异常：' + r.status);
       }
 
-      if (data && data.ok) {
-        document.getElementById('importProgressBar').style.width = '100%';
-        document.getElementById('importProgressText').textContent = '100%';
-        showToast('导入成功', 'success');
+      const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+      if (!reader) {
+        throw new Error('浏览器不支持流式读取，请更换现代浏览器');
+      }
+
+      await parseNdjsonStream(reader, (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        if (obj.type === 'log') {
+          addImportLog(logsEl, obj);
+          updateProgressFromLogs(logsEl, false);
+        } else if (obj.type === 'done') {
+          updateProgressFromLogs(logsEl, true);
+          finishedOk = !!obj.ok;
+          finishedMsg = obj.message || (finishedOk ? '导入成功' : '导入失败');
+          return false;
+        }
+      });
+
+      if (finishedOk) {
+        showToast(finishedMsg || '导入成功', 'success');
         clearFileInfo();
         loadBackupRecords();
       } else {
-        showToast((data && data.message) || '导入失败', 'error');
+        showToast(finishedMsg || '导入失败', 'error');
       }
     } catch (e) {
-      clearInterval(progressTimer);
       addImportLog(logsEl, { time: new Date().toISOString(), level: 'error', message: '网络错误：' + e.message });
       showToast('导入失败：' + e.message, 'error');
     } finally {

@@ -130,15 +130,35 @@ router.post('/import', upload.single('file'), async (req, res) => {
     return res.status(400).json({ ok: false, message: '请上传备份文件' });
   }
 
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  function flush() {
+    try { if (typeof res.flush === 'function') res.flush(); } catch (_) {}
+  }
+
+  function writeLine(obj) {
+    try {
+      res.write(JSON.stringify(obj) + '\n');
+      flush();
+    } catch (_) {}
+  }
+
   const t = await sequelize.transaction();
   const logs = [];
   const affectedRows = {};
 
   function addLog(level, message) {
-    const entry = { time: new Date().toISOString(), level, message };
+    const entry = { type: 'log', time: new Date().toISOString(), level, message };
     logs.push(entry);
+    writeLine(entry);
     logger.info(`[Import ${mode}] ${message}`);
   }
+
+  let finalOk = false;
+  let finalMessage = '';
 
   try {
     addLog('info', `开始导入，模式：${mode === 'overwrite' ? '覆盖模式' : '增量模式'}`);
@@ -226,25 +246,23 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
     await t.commit();
     addLog('success', '事务已提交，导入成功！');
-
-    res.json({
-      ok: true,
-      message: '导入成功',
-      data: {
-        logs,
-        affectedRows,
-      },
-    });
+    finalOk = true;
+    finalMessage = '导入成功';
   } catch (e) {
-    await t.rollback();
+    try { await t.rollback(); } catch (_) {}
     addLog('error', '导入失败：' + e.message);
     logger.error('Import backup error', { error: e.message, mode });
-    res.status(500).json({
-      ok: false,
-      message: '导入失败：' + e.message,
-      data: { logs, affectedRows },
-    });
+    finalOk = false;
+    finalMessage = '导入失败：' + e.message;
   }
+
+  writeLine({
+    type: 'done',
+    ok: finalOk,
+    message: finalMessage,
+    affectedRows,
+  });
+  try { res.end(); } catch (_) {}
 });
 
 router.get('/records', async (req, res) => {
