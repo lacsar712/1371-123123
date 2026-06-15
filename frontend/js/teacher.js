@@ -1421,12 +1421,10 @@
     const modal = document.getElementById('examModal');
     const titleEl = document.getElementById('examModalTitle');
     const courseSel = document.getElementById('examCourseId');
-    courseSel.innerHTML = '<option value="">请选择课程</option>' +
-      courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+    courseSel.innerHTML = '<option value="">加载中...</option>';
 
     if (id) {
       titleEl.textContent = '编辑考试';
-      loadExamDetail(id);
     } else {
       titleEl.textContent = '新增考试';
       document.getElementById('examTime').value = '';
@@ -1434,7 +1432,27 @@
       document.getElementById('examLocation').value = '';
       document.getElementById('examType').value = 'closed';
     }
+
+    loadTeacherCourses().then((list) => {
+      courseSel.innerHTML = '<option value="">请选择课程</option>' +
+        list.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`).join('');
+      if (id) {
+        loadExamDetail(id);
+      }
+    });
+
     modal.classList.add('show');
+  }
+
+  let _teacherCoursesCache = null;
+  async function loadTeacherCourses() {
+    if (_teacherCoursesCache) return _teacherCoursesCache;
+    const { data } = await api(`/api/courses?teacherId=${user.id}`);
+    if (data && data.ok && Array.isArray(data.data)) {
+      _teacherCoursesCache = data.data;
+      return data.data;
+    }
+    return [];
   }
 
   function closeExamModal() {

@@ -6,17 +6,22 @@ const logger = require('../logger');
 
 router.get('/', async (req, res) => {
   const keyword = (req.query.keyword || '').trim();
+  const teacherId = req.query.teacherId ? Number(req.query.teacherId) : null;
   try {
-    const where = keyword
-      ? { [Op.or]: [
-          { name: { [Op.like]: `%${keyword}%` } },
-          { code: { [Op.like]: `%${keyword}%` } },
-        ] }
-      : {};
+    const where = {};
+    if (keyword) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${keyword}%` } },
+        { code: { [Op.like]: `%${keyword}%` } },
+      ];
+    }
+    if (teacherId) {
+      where.teacherId = teacherId;
+    }
     const list = await Course.findAll({
       where,
       order: [['id']],
-      attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode'],
+      attributes: ['id', 'code', 'name', 'credit', 'capacity', 'lotteryMode', 'teacherId'],
     });
     const enrollCounts = await Enrollment.findAll({
       attributes: ['courseId', [sequelize.fn('COUNT', sequelize.col('id')), 'enrolled']],
@@ -31,6 +36,7 @@ router.get('/', async (req, res) => {
       credit: c.credit,
       capacity: c.capacity,
       lotteryMode: c.lotteryMode,
+      teacherId: c.teacherId || null,
       enrolled: countMap[c.id] ?? 0,
     }));
     return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, data });
