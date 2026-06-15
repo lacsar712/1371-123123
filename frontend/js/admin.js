@@ -271,20 +271,36 @@
           const waiting = sc.waiting || 0;
           const won = sc.won || 0;
           const lost = sc.lost || 0;
+          const entries = c.entries ?? 0;
           const hasWaiting = waiting > 0;
+          const hasDrawn = won > 0 || lost > 0;
+          let btnText, btnDisabled;
+          if (hasWaiting) {
+            btnText = '执行抽签';
+            btnDisabled = false;
+          } else if (entries === 0) {
+            btnText = '暂无报名';
+            btnDisabled = true;
+          } else if (hasDrawn) {
+            btnText = '已开奖';
+            btnDisabled = true;
+          } else {
+            btnText = '暂无报名';
+            btnDisabled = true;
+          }
           return `
           <tr>
             <td>${c.id}</td>
             <td>${escapeHtml(c.code)}</td>
             <td>${escapeHtml(c.name)}</td>
             <td>${c.capacity ?? 0}</td>
-            <td>${c.entries ?? 0}</td>
+            <td>${entries}</td>
             <td><span class="badge badge-lottery-waiting">${waiting}</span></td>
             <td><span class="badge badge-lottery-won">${won}</span></td>
             <td><span class="badge badge-lottery-lost">${lost}</span></td>
             <td>
-              <button type="button" class="btn btn-primary btn-sm execute-lottery-btn" data-id="${c.id}" ${!hasWaiting ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
-                ${hasWaiting ? '执行抽签' : '已开奖'}
+              <button type="button" class="btn btn-primary btn-sm execute-lottery-btn" data-id="${c.id}" ${btnDisabled ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
+                ${btnText}
               </button>
             </td>
           </tr>`;

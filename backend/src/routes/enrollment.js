@@ -92,7 +92,7 @@ router.delete('/:id/enroll/:courseId', param('id').isInt({ min: 1 }), param('cou
   const studentId = parseInt(req.params.id, 10);
   const courseId = parseInt(req.params.courseId, 10);
   try {
-    const lotteryDestroyed = await LotteryEntry.destroy({ where: { studentId, courseId } });
+    const lotteryDestroyed = await LotteryEntry.destroy({ where: { studentId, courseId, status: 'waiting' } });
     const enrollDestroyed = await Enrollment.destroy({ where: { studentId, courseId } });
     if (lotteryDestroyed === 0 && enrollDestroyed === 0) return res.status(404).json({ ok: false, message: '未找到选课记录' });
     return res.set('Content-Type', 'application/json; charset=utf-8').json({ ok: true, message: '退课成功' });
