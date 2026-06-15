@@ -63,6 +63,7 @@ const listValidators = [
   query('status').optional().isIn(['pending', 'processing', 'resolved', 'closed']).withMessage('无效的状态'),
   query('category').optional().isIn(['course_enrollment', 'grade_appeal', 'system_fault', 'other']).withMessage('无效的分类'),
   query('submitterId').optional().isInt({ min: 1 }).withMessage('无效的提交人ID'),
+  query('submitterRole').optional().isIn(['student', 'teacher', 'admin']).withMessage('无效的提交人角色'),
   query('handlerId').optional().isInt({ min: 1 }).withMessage('无效的处理人ID'),
   query('keyword').optional().trim(),
 ];
@@ -74,13 +75,16 @@ router.get('/', listValidators, async (req, res) => {
   }
   const page = parseInt(req.query.page, 10) || 1;
   const pageSize = parseInt(req.query.pageSize, 10) || 10;
-  const { status, category, submitterId, handlerId, keyword } = req.query;
+  const { status, category, submitterId, submitterRole, handlerId, keyword } = req.query;
 
   try {
     const where = {};
     if (status) where.status = status;
     if (category) where.category = category;
-    if (submitterId) where.submitterId = parseInt(submitterId, 10);
+    if (submitterId) {
+      where.submitterId = parseInt(submitterId, 10);
+      if (submitterRole) where.submitterRole = submitterRole;
+    }
     if (handlerId) where.handlerId = parseInt(handlerId, 10);
     if (keyword) {
       where[Op.or] = [
@@ -121,18 +125,33 @@ router.get('/', listValidators, async (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt({ min: 1 }), async (req, res) => {
+const detailValidators = [
+  param('id').isInt({ min: 1 }),
+  query('requesterId').optional().isInt({ min: 1 }),
+  query('requesterRole').optional().isIn(['student', 'teacher', 'admin']),
+];
+
+router.get('/:id', detailValidators, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return sendJson(res, 400, { ok: false, message: errors.array()[0].msg });
   }
   const id = parseInt(req.params.id, 10);
+  const requesterId = req.query.requesterId ? parseInt(req.query.requesterId, 10) : null;
+  const requesterRole = req.query.requesterRole || null;
   try {
     const ticket = await Ticket.findByPk(id, {
       include: [{ model: TicketReply, as: 'replies', order: [['createdAt', 'ASC']] }],
     });
     if (!ticket) {
       return sendJson(res, 404, { ok: false, message: '工单不存在' });
+    }
+    if (requesterId && requesterRole && requesterRole !== 'admin') {
+      if (ticket.submitterId !== requesterId || ticket.submitterRole !== requesterRole) {
+        if (ticket.handlerId !== requesterId) {
+          return sendJson(res, 403, { ok: false, message: '无权查看该工单' });
+        }
+      }
     }
     const data = {
       ...ticket.toJSON(),
@@ -172,6 +191,15 @@ router.post('/:id/reply', param('id').isInt({ min: 1 }), replyValidators, async 
     if (ticket.status === 'closed') {
       await t.rollback();
       return sendJson(res, 400, { ok: false, message: '工单已关闭，无法回复' });
+    }
+
+    if (replyerRole !== 'admin') {
+      const isSubmitter = ticket.submitterId === replyerId && ticket.submitterRole === replyerRole;
+      const isHandler = ticket.handlerId === replyerId;
+      if (!isSubmitter && !isHandler) {
+        await t.rollback();
+        return sendJson(res, 403, { ok: false, message: '无权回复该工单' });
+      }
     }
 
     const reply = await TicketReply.create(

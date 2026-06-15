@@ -761,6 +761,7 @@
     const container = document.getElementById('ticketList');
     const params = new URLSearchParams({
       submitterId: user.id,
+      submitterRole: 'student',
       page: currentTicketPage,
       pageSize: 10,
     });
@@ -833,7 +834,7 @@
   async function loadTicketDetail(ticketId) {
     const container = document.getElementById('ticketDetailContent');
     const replySection = document.getElementById('ticketReplySection');
-    const { data } = await api('/api/tickets/' + ticketId);
+    const { data } = await api('/api/tickets/' + ticketId + '?requesterId=' + user.id + '&requesterRole=student');
     if (data && data.ok && data.data) {
       const ticket = data.data;
       document.getElementById('detailTitle').textContent = ticket.title;
@@ -883,7 +884,13 @@
         replySection.style.display = 'none';
       }
     } else {
-      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">加载失败</div>';
+      const msg = (data && data.message) || '加载失败';
+      if (data && data.message === '无权查看该工单') {
+        container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">无权查看该工单</div>';
+        replySection.style.display = 'none';
+      } else {
+        container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">' + escapeHtml(msg) + '</div>';
+      }
     }
   }
 
