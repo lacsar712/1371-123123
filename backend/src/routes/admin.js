@@ -5,6 +5,7 @@ const router = express.Router();
 const { Course, Enrollment, Student, AttendanceSession, AttendanceRecord, LotteryEntry, sequelize } = require('../models');
 const { hashPassword } = require('../db');
 const { triggerEvent } = require('../badgeRules');
+const notificationService = require('../notificationService');
 const logger = require('../logger');
 
 // ========== 学生管理 ==========
@@ -434,6 +435,15 @@ router.post('/lottery/execute/:courseId', param('courseId').isInt({ min: 1 }), a
       for (const w of winners) {
         triggerEvent('lottery_won', w.studentId, { courseName: course.name });
         triggerEvent('enroll', w.studentId, { courseName: course.name });
+        notificationService.createAndPush(
+          w.studentId,
+          'student',
+          '候补转正通知',
+          `恭喜！您在课程「${course.name}」的抽签中已中签，请及时查看选课结果`,
+          'lottery',
+          'enrollment',
+          course.id
+        );
       }
     } catch (e) {
       await t.rollback();

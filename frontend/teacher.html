@@ -183,7 +183,7 @@
   <div class="bg-mesh"></div>
   <header class="student-header page-enter">
     <h1>考勤管理</h1>
-    <div>
+    <div style="display:flex;align-items:center;gap:0;">
       <button type="button" class="btn btn-ghost" id="examBtn" style="margin-right:12px;">
         📝 考试安排
       </button>
@@ -194,7 +194,11 @@
         📩 我的工单
         <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
       </button>
-      <span id="userName" style="margin-right:12px;color:var(--text-secondary);"></span>
+      <button type="button" class="notification-bell-btn" id="notificationBellBtn" aria-label="通知">
+        <span class="notification-bell-icon" id="bellIcon">🔔</span>
+        <span class="notification-badge" id="notificationBadge" style="display:none;">0</span>
+      </button>
+      <span id="userName" style="margin-left:12px;color:var(--text-secondary);"></span>
       <a href="index.html" class="btn btn-ghost" id="logoutBtn" role="button">退出</a>
     </div>
   </header>
@@ -432,6 +436,17 @@
         <button type="button" class="btn btn-primary" id="submitTicketBtn">提交</button>
       </div>
     </div>
+  </div>
+
+  <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+    <div class="notification-dropdown-header">
+      <span style="font-weight:600;">通知</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="notification-dropdown-action" id="markAllReadBtn">全部已读</button>
+        <button type="button" class="notification-sound-toggle" id="soundToggleBtn" title="通知音效开关">🔊</button>
+      </div>
+    </div>
+    <div id="notificationDropdownList" class="notification-dropdown-list"></div>
   </div>
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>

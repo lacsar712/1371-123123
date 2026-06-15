@@ -230,6 +230,7 @@
     document.getElementById('logoutBtn').addEventListener('click', (e) => {
       sessionStorage.removeItem('user');
       if (notificationTimer) clearInterval(notificationTimer);
+      if (notificationSSE) notificationSSE.close();
       if (navigator.sendBeacon) {
         navigator.sendBeacon(API_BASE + '/api/auth/logout', '');
       } else {
@@ -266,8 +267,42 @@
       checkActiveSessions();
     });
 
-    checkNotifications();
-    notificationTimer = setInterval(checkNotifications, 30000);
+    fetchUnreadCount();
+    connectSSE();
+
+    document.getElementById('notificationBellBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleNotificationDropdown();
+    });
+
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('notificationDropdown');
+      const bellBtn = document.getElementById('notificationBellBtn');
+      if (notificationDropdownOpen && dropdown && !dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
+        toggleNotificationDropdown(false);
+      }
+    });
+
+    const markAllReadBtn = document.getElementById('markAllReadBtn');
+    if (markAllReadBtn) {
+      markAllReadBtn.addEventListener('click', async () => {
+        try {
+          const params = new URLSearchParams({ userId: user.id, userRole: 'teacher' });
+          await api('/api/notifications/read-all?' + params.toString(), { method: 'POST' });
+          updateNotificationBadge(0);
+          loadNotificationDropdown();
+          showToast('已全部标为已读', 'success');
+        } catch (e) {}
+      });
+    }
+
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    if (soundToggleBtn) {
+      soundToggleBtn.addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        soundToggleBtn.textContent = soundEnabled ? '🔊' : '🔇';
+      });
+    }
   }
 
   let currentTicketPage = 1;
@@ -275,6 +310,10 @@
   let currentTicketId = null;
   let notificationTimer = null;
   let lastNotificationId = 0;
+  let notificationSSE = null;
+  let notificationDropdownOpen = false;
+  let soundEnabled = true;
+  let notificationAudioCtx = null;
 
   function showTicketPage() {
     document.querySelector('main.student-main').style.display = 'none';
@@ -527,29 +566,188 @@
 
   async function checkNotifications() {
     if (!user) return;
-    const params = new URLSearchParams({
-      userId: user.id,
-      userRole: 'teacher',
-    });
-    const { data } = await api('/api/notifications/unread-count?' + params.toString());
-    if (data && data.ok && data.data) {
-      const { unreadCount, latest } = data.data;
-      const badge = document.getElementById('ticketBadge');
-      if (badge) {
-        badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
-      }
+    await fetchUnreadCount();
+  }
 
-      if (latest && latest.length) {
-        latest.forEach((n) => {
-          if (n.id > lastNotificationId) {
-            showFloatingNotification(n);
-          }
-        });
-        const maxId = Math.max(...latest.map((n) => n.id));
-        if (maxId > lastNotificationId) {
-          lastNotificationId = maxId;
-        }
+  function playNotificationSound() {
+    if (!soundEnabled) return;
+    try {
+      if (!notificationAudioCtx) {
+        notificationAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
+      const ctx = notificationAudioCtx;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.16);
+      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+  }
+
+  function shakeBell() {
+    const bell = document.getElementById('bellIcon');
+    if (bell) {
+      bell.classList.remove('bell-shake');
+      void bell.offsetWidth;
+      bell.classList.add('bell-shake');
+    }
+  }
+
+  function updateNotificationBadge(count) {
+    const badge = document.getElementById('notificationBadge');
+    if (badge) {
+      if (count > 0) {
+        badge.style.display = 'inline-flex';
+        badge.textContent = count > 99 ? '99+' : count;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  }
+
+  async function fetchUnreadCount() {
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ userId: user.id, userRole: 'teacher' });
+      const { data } = await api('/api/notifications/unread-count?' + params.toString());
+      if (data && data.ok && data.data) {
+        updateNotificationBadge(data.data.unreadCount);
+      }
+    } catch (e) {}
+  }
+
+  function connectSSE() {
+    if (!user) return;
+    if (notificationSSE) {
+      notificationSSE.close();
+      notificationSSE = null;
+    }
+    try {
+      const url = API_BASE + '/api/notifications/sse?userId=' + user.id + '&userRole=teacher';
+      notificationSSE = new EventSource(url);
+      notificationSSE.onmessage = function (event) {
+        try {
+          const notification = JSON.parse(event.data);
+          if (notification.type === 'connected') return;
+          onNewNotification(notification);
+        } catch (e) {}
+      };
+      notificationSSE.onerror = function () {
+        notificationSSE.close();
+        notificationSSE = null;
+        setTimeout(connectSSE, 5000);
+      };
+    } catch (e) {
+      setTimeout(connectSSE, 5000);
+    }
+  }
+
+  function onNewNotification(notification) {
+    if (notification.id <= lastNotificationId) return;
+    lastNotificationId = notification.id;
+    showFloatingNotification(notification);
+    shakeBell();
+    playNotificationSound();
+    fetchUnreadCount();
+  }
+
+  async function loadNotificationDropdown() {
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ userId: user.id, userRole: 'teacher', limit: '10' });
+      const { data } = await api('/api/notifications/latest?' + params.toString());
+      if (data && data.ok && data.data) {
+        updateNotificationBadge(data.data.unreadCount);
+        renderNotificationDropdown(data.data.list);
+      }
+    } catch (e) {}
+  }
+
+  function getTypeIcon(type) {
+    const map = {
+      lottery: '🎰',
+      ticket: '📩',
+      badge: '🏅',
+      exam: '📝',
+      announcement: '📢',
+      system: '⚙️',
+    };
+    return map[type] || '🔔';
+  }
+
+  function formatRelativeTime(dateStr) {
+    if (!dateStr) return '';
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return minutes + ' 分钟前';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + ' 小时前';
+    const days = Math.floor(hours / 24);
+    if (days < 30) return days + ' 天前';
+    return formatDateTime(dateStr);
+  }
+
+  function renderNotificationDropdown(notifications) {
+    const container = document.getElementById('notificationDropdownList');
+    if (!container) return;
+    if (!notifications || !notifications.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:32px;">暂无通知</div>';
+      return;
+    }
+    container.innerHTML = notifications.map((n) => `
+      <div class="notification-dropdown-item ${n.isRead ? '' : 'unread'}" data-id="${n.id}" data-type="${n.type || 'system'}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}">
+        <div class="notification-dropdown-item-icon">${getTypeIcon(n.type)}</div>
+        <div class="notification-dropdown-item-content">
+          <div class="notification-dropdown-item-title">${escapeHtml(n.title)}</div>
+          <div class="notification-dropdown-item-desc">${escapeHtml(n.content || '')}</div>
+          <div class="notification-dropdown-item-time">${formatRelativeTime(n.createdAt)}</div>
+        </div>
+        ${n.isRead ? '' : '<div class="notification-unread-dot"></div>'}
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.notification-dropdown-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = parseInt(el.dataset.id, 10);
+        const relatedType = el.dataset.relatedType;
+        const relatedId = parseInt(el.dataset.relatedId, 10);
+        if (!el.classList.contains('isRead')) {
+          markNotificationRead(id);
+          el.classList.remove('unread');
+          const dot = el.querySelector('.notification-unread-dot');
+          if (dot) dot.remove();
+        }
+        toggleNotificationDropdown(false);
+        if (relatedType === 'ticket' && relatedId) {
+          showTicketPage();
+          showTicketDetailPage(relatedId);
+        }
+      });
+    });
+  }
+
+  function toggleNotificationDropdown(show) {
+    const dropdown = document.getElementById('notificationDropdown');
+    if (!dropdown) return;
+    if (show === undefined) {
+      notificationDropdownOpen = !notificationDropdownOpen;
+    } else {
+      notificationDropdownOpen = show;
+    }
+    if (notificationDropdownOpen) {
+      dropdown.style.display = 'block';
+      loadNotificationDropdown();
+    } else {
+      dropdown.style.display = 'none';
     }
   }
 
@@ -557,8 +755,11 @@
     const el = document.createElement('div');
     el.className = 'floating-notification';
     el.innerHTML = `
-      <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
-      <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+      <div class="floating-notification-icon">${getTypeIcon(notification.type)}</div>
+      <div class="floating-notification-body">
+        <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
+        <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+      </div>
     `;
     document.body.appendChild(el);
 
@@ -571,18 +772,23 @@
     el.addEventListener('click', () => {
       el.classList.remove('show');
       setTimeout(() => el.remove(), 300);
-      if (notification.ticketId) {
+      const relatedType = notification.relatedObjectType;
+      const relatedId = notification.relatedObjectId;
+      if (relatedType === 'ticket' && relatedId) {
         showTicketPage();
-        showTicketDetailPage(notification.ticketId);
+        showTicketDetailPage(relatedId);
       }
     });
 
-    markNotificationRead(notification.id);
+    if (!notification.isRead) {
+      markNotificationRead(notification.id);
+    }
   }
 
   async function markNotificationRead(id) {
     try {
       await api('/api/notifications/' + id + '/read', { method: 'PUT' });
+      fetchUnreadCount();
     } catch (e) {}
   }
 

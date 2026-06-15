@@ -11,6 +11,7 @@ const {
   Student,
   sequelize,
 } = require('./models');
+const notificationService = require('./notificationService');
 const logger = require('./logger');
 
 const BADGE_DEFINITIONS = [
@@ -139,6 +140,17 @@ async function awardBadge(studentId, badge) {
   });
   await addPoints(studentId, 'badge_award', `获得勋章：${badge.name}`, badge.points);
   logger.info(`Badge awarded: student=${studentId}, badge=${badge.name}`);
+
+  notificationService.createAndPush(
+    studentId,
+    'student',
+    '获得新勋章',
+    `恭喜您获得勋章「${badge.name}」！${badge.description}`,
+    'badge',
+    'badge',
+    badge.id
+  );
+
   return true;
 }
 

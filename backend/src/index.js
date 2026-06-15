@@ -69,6 +69,68 @@ async function waitDb(maxAttempts = 30) {
   throw new Error('Database connect timeout');
 }
 
+async function startExamReminderJob() {
+  const { Exam, Enrollment, Course, Student } = require('./models');
+  const notificationService = require('./notificationService');
+
+  const remindedSet = new Set();
+
+  async function checkExamReminders() {
+    try {
+      const now = new Date();
+      const after24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const after23h = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+
+      const exams = await Exam.findAll({
+        where: {
+          examTime: { [require('sequelize').Op.between]: [after23h, after24h] },
+        },
+        include: [{ model: Course, as: 'course', attributes: ['id', 'code', 'name'] }],
+      });
+
+      for (const exam of exams) {
+        const enrollments = await Enrollment.findAll({
+          where: { courseId: exam.courseId },
+          attributes: ['studentId'],
+        });
+
+        for (const enrollment of enrollments) {
+          const key = `${exam.id}:${enrollment.studentId}`;
+          if (remindedSet.has(key)) continue;
+          remindedSet.add(key);
+
+          const courseName = exam.course ? exam.course.name : '';
+          const examTimeStr = new Date(exam.examTime).toLocaleString('zh-CN');
+
+          await notificationService.createAndPush(
+            enrollment.studentId,
+            'student',
+            '考试时间临近',
+            `您选修的「${courseName}」将于 ${examTimeStr} 开始考试，请做好准备`,
+            'exam',
+            'exam',
+            exam.id
+          );
+        }
+      }
+
+      if (remindedSet.size > 5000) {
+        const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+        for (const key of remindedSet) {
+          remindedSet.delete(key);
+          if (remindedSet.size <= 2500) break;
+        }
+      }
+    } catch (e) {
+      logger.error('Exam reminder job error', { error: e.message });
+    }
+  }
+
+  setInterval(checkExamReminders, 5 * 60 * 1000);
+  checkExamReminders();
+  logger.info('Exam reminder job started');
+}
+
 async function start() {
   try {
     await waitDb();
@@ -87,6 +149,7 @@ async function start() {
   } catch (e) {
     logger.error('Seed failed, server will still start', { error: e.message });
   }
+  startExamReminderJob();
   app.listen(PORT, '0.0.0.0', () => {
     logger.info('Server listening', { port: PORT, url: `http://0.0.0.0:${PORT}` });
   });

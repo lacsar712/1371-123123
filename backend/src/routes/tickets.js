@@ -2,7 +2,8 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const router = express.Router();
-const { Ticket, TicketReply, Notification, sequelize } = require('../models');
+const { Ticket, TicketReply, sequelize } = require('../models');
+const notificationService = require('../notificationService');
 const logger = require('../logger');
 
 const CATEGORY_MAP = {
@@ -22,21 +23,6 @@ const STATUS_MAP = {
 function sendJson(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.status(status).send(JSON.stringify(body));
-}
-
-async function createNotification(userId, userRole, title, content, type = 'info', ticketId = null) {
-  try {
-    await Notification.create({
-      userId,
-      userRole,
-      title,
-      content,
-      type,
-      ticketId,
-    });
-  } catch (e) {
-    logger.error('Create notification error', { error: e.message });
-  }
 }
 
 const createValidators = [
@@ -207,23 +193,25 @@ router.post('/:id/reply', param('id').isInt({ min: 1 }), replyValidators, async 
     await t.commit();
 
     if (replyerRole === 'admin' && ticket.submitterId !== replyerId) {
-      createNotification(
+      notificationService.createAndPush(
         ticket.submitterId,
         ticket.submitterRole,
         '工单有新回复',
         `您的工单「${ticket.title}」收到了新回复`,
-        'info',
+        'ticket',
+        'ticket',
         ticketId
       );
     }
 
     if (replyerRole !== 'admin' && ticket.handlerId) {
-      createNotification(
+      notificationService.createAndPush(
         ticket.handlerId,
         'admin',
         '工单有新回复',
         `工单「${ticket.title}」收到了用户的新回复`,
-        'info',
+        'ticket',
+        'ticket',
         ticketId
       );
     }
@@ -262,12 +250,13 @@ router.put('/:id/status', param('id').isInt({ min: 1 }), statusValidators, async
     const updated = await Ticket.findByPk(ticketId);
 
     if (oldStatus !== status) {
-      createNotification(
+      notificationService.createAndPush(
         ticket.submitterId,
         ticket.submitterRole,
         '工单状态已更新',
         `您的工单「${ticket.title}」状态已变更为「${STATUS_MAP[status] || status}」`,
-        status === 'resolved' ? 'success' : 'info',
+        'ticket',
+        'ticket',
         ticketId
       );
     }
@@ -304,12 +293,13 @@ router.post('/batch-assign', assignValidators, async (req, res) => {
     );
 
     tickets.forEach((ticket) => {
-      createNotification(
+      notificationService.createAndPush(
         ticket.submitterId,
         ticket.submitterRole,
         '工单已分配处理人',
         `您的工单「${ticket.title}」已分配处理人，正在处理中`,
-        'info',
+        'ticket',
+        'ticket',
         ticket.id
       );
     });

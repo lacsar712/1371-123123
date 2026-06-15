@@ -374,6 +374,360 @@
   let currentTicketId = null;
   let notificationTimer = null;
   let lastNotificationId = 0;
+  let notificationSSE = null;
+  let notificationDropdownOpen = false;
+  let soundEnabled = true;
+  let ncCurrentType = '';
+  let ncCurrentPage = 1;
+  let ncSelectedIds = new Set();
+  let notificationAudioCtx = null;
+
+  function playNotificationSound() {
+    if (!soundEnabled) return;
+    try {
+      if (!notificationAudioCtx) {
+        notificationAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = notificationAudioCtx;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.16);
+      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+  }
+
+  function shakeBell() {
+    const bell = document.getElementById('bellIcon');
+    if (bell) {
+      bell.classList.remove('bell-shake');
+      void bell.offsetWidth;
+      bell.classList.add('bell-shake');
+    }
+  }
+
+  function updateNotificationBadge(count) {
+    const badge = document.getElementById('notificationBadge');
+    if (badge) {
+      if (count > 0) {
+        badge.style.display = 'inline-flex';
+        badge.textContent = count > 99 ? '99+' : count;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    const ticketBadge = document.getElementById('ticketBadge');
+    if (ticketBadge) {
+      ticketBadge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+  }
+
+  async function fetchUnreadCount() {
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ userId: user.id, userRole: 'student' });
+      const { data } = await api('/api/notifications/unread-count?' + params.toString());
+      if (data && data.ok && data.data) {
+        updateNotificationBadge(data.data.unreadCount);
+      }
+    } catch (e) {}
+  }
+
+  function connectSSE() {
+    if (!user) return;
+    if (notificationSSE) {
+      notificationSSE.close();
+      notificationSSE = null;
+    }
+    try {
+      const url = API_BASE + '/api/notifications/sse?userId=' + user.id + '&userRole=student';
+      notificationSSE = new EventSource(url);
+      notificationSSE.onmessage = function (event) {
+        try {
+          const notification = JSON.parse(event.data);
+          if (notification.type === 'connected') return;
+          onNewNotification(notification);
+        } catch (e) {}
+      };
+      notificationSSE.onerror = function () {
+        notificationSSE.close();
+        notificationSSE = null;
+        setTimeout(connectSSE, 5000);
+      };
+    } catch (e) {
+      setTimeout(connectSSE, 5000);
+    }
+  }
+
+  function onNewNotification(notification) {
+    if (notification.id <= lastNotificationId) return;
+    lastNotificationId = notification.id;
+    showFloatingNotification(notification);
+    shakeBell();
+    playNotificationSound();
+    fetchUnreadCount();
+  }
+
+  async function loadNotificationDropdown() {
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ userId: user.id, userRole: 'student', limit: '10' });
+      const { data } = await api('/api/notifications/latest?' + params.toString());
+      if (data && data.ok && data.data) {
+        updateNotificationBadge(data.data.unreadCount);
+        renderNotificationDropdown(data.data.list);
+      }
+    } catch (e) {}
+  }
+
+  function getTypeIcon(type) {
+    const map = {
+      lottery: '🎰',
+      ticket: '📩',
+      badge: '🏅',
+      exam: '📝',
+      announcement: '📢',
+      system: '⚙️',
+    };
+    return map[type] || '🔔';
+  }
+
+  function getTypeLabel(type) {
+    const map = {
+      lottery: '候补转正',
+      ticket: '工单回复',
+      badge: '新勋章',
+      exam: '考试提醒',
+      announcement: '公告',
+      system: '系统',
+    };
+    return map[type] || '通知';
+  }
+
+  function formatRelativeTime(dateStr) {
+    if (!dateStr) return '';
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return minutes + ' 分钟前';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + ' 小时前';
+    const days = Math.floor(hours / 24);
+    if (days < 30) return days + ' 天前';
+    return formatDateTime(dateStr);
+  }
+
+  function renderNotificationDropdown(notifications) {
+    const container = document.getElementById('notificationDropdownList');
+    if (!container) return;
+    if (!notifications || !notifications.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:32px;">暂无通知</div>';
+      return;
+    }
+    container.innerHTML = notifications.map((n) => `
+      <div class="notification-dropdown-item ${n.isRead ? '' : 'unread'}" data-id="${n.id}" data-type="${n.type || 'system'}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}">
+        <div class="notification-dropdown-item-icon">${getTypeIcon(n.type)}</div>
+        <div class="notification-dropdown-item-content">
+          <div class="notification-dropdown-item-title">${escapeHtml(n.title)}</div>
+          <div class="notification-dropdown-item-desc">${escapeHtml(n.content || '')}</div>
+          <div class="notification-dropdown-item-time">${formatRelativeTime(n.createdAt)}</div>
+        </div>
+        ${n.isRead ? '' : '<div class="notification-unread-dot"></div>'}
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.notification-dropdown-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = parseInt(el.dataset.id, 10);
+        const relatedType = el.dataset.relatedType;
+        const relatedId = parseInt(el.dataset.relatedId, 10);
+        if (!parseInt(el.dataset.isRead || '0')) {
+          markNotificationRead(id);
+          el.classList.remove('unread');
+          const dot = el.querySelector('.notification-unread-dot');
+          if (dot) dot.remove();
+        }
+        toggleNotificationDropdown(false);
+        handleNotificationClick(relatedType, relatedId);
+      });
+    });
+  }
+
+  function handleNotificationClick(relatedType, relatedId) {
+    if (relatedType === 'ticket' && relatedId) {
+      showTicketPage();
+      showTicketDetailPage(relatedId);
+    } else if (relatedType === 'enrollment' && relatedId) {
+      loadMyCourses();
+      loadMyLottery();
+    } else if (relatedType === 'badge') {
+      showBadgePage();
+    } else if (relatedType === 'exam') {
+      showExamPage();
+    }
+  }
+
+  function toggleNotificationDropdown(show) {
+    const dropdown = document.getElementById('notificationDropdown');
+    if (!dropdown) return;
+    if (show === undefined) {
+      notificationDropdownOpen = !notificationDropdownOpen;
+    } else {
+      notificationDropdownOpen = show;
+    }
+    if (notificationDropdownOpen) {
+      dropdown.style.display = 'block';
+      loadNotificationDropdown();
+    } else {
+      dropdown.style.display = 'none';
+    }
+  }
+
+  function showNotificationCenterPage() {
+    hideAllPages();
+    document.getElementById('notificationCenterPage').style.display = 'block';
+    ncCurrentPage = 1;
+    ncSelectedIds = new Set();
+    loadNotificationCenterList();
+  }
+
+  function hideNotificationCenterPage() {
+    document.getElementById('notificationCenterPage').style.display = 'none';
+    document.querySelector('main.student-main').style.display = 'block';
+  }
+
+  async function loadNotificationCenterList() {
+    if (!user) return;
+    const container = document.getElementById('notificationCenterList');
+    const params = new URLSearchParams({
+      userId: user.id,
+      userRole: 'student',
+      page: ncCurrentPage,
+      pageSize: 20,
+    });
+    if (ncCurrentType) params.append('type', ncCurrentType);
+
+    try {
+      const { data } = await api('/api/notifications?' + params.toString());
+      if (data && data.ok && data.data) {
+        updateNotificationBadge(data.data.unreadCount);
+        renderNotificationCenterList(data.data);
+      } else {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">加载失败</div>';
+      }
+    } catch (e) {
+      container.innerHTML = '<div style="text-align:center;color:var(--danger);padding:48px;">网络错误</div>';
+    }
+  }
+
+  function renderNotificationCenterList(pageData) {
+    const container = document.getElementById('notificationCenterList');
+    const { list, total, totalPages } = pageData;
+
+    if (!list || !list.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:48px;">暂无通知</div>';
+      document.getElementById('notificationCenterPagination').innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = list.map((n) => `
+      <div class="nc-item ${n.isRead ? '' : 'unread'}" data-id="${n.id}" data-type="${n.type || 'system'}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}">
+        <label class="nc-checkbox-wrap" onclick="event.stopPropagation();">
+          <input type="checkbox" class="nc-checkbox" data-id="${n.id}" ${ncSelectedIds.has(n.id) ? 'checked' : ''} />
+        </label>
+        <div class="nc-item-icon">${getTypeIcon(n.type)}</div>
+        <div class="nc-item-content" data-id="${n.id}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}">
+          <div class="nc-item-title">
+            <span class="nc-type-tag nc-type-${n.type || 'system'}">${getTypeLabel(n.type)}</span>
+            ${escapeHtml(n.title)}
+          </div>
+          <div class="nc-item-desc">${escapeHtml(n.content || '')}</div>
+          <div class="nc-item-meta">
+            <span>${formatRelativeTime(n.createdAt)}</span>
+            ${n.isRead ? '' : '<span style="color:var(--accent-start);">未读</span>'}
+          </div>
+        </div>
+        <div class="nc-item-actions">
+          ${n.isRead ? '' : `<button type="button" class="nc-action-btn nc-read-btn" data-id="${n.id}" title="标已读">✓</button>`}
+          <button type="button" class="nc-action-btn nc-delete-btn" data-id="${n.id}" title="删除">✕</button>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.nc-checkbox').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const id = parseInt(cb.dataset.id, 10);
+        if (cb.checked) ncSelectedIds.add(id);
+        else ncSelectedIds.delete(id);
+      });
+    });
+
+    container.querySelectorAll('.nc-item-content').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = parseInt(el.dataset.id, 10);
+        const relatedType = el.dataset.relatedType;
+        const relatedId = parseInt(el.dataset.relatedId, 10);
+        markNotificationRead(id);
+        handleNotificationClick(relatedType, relatedId);
+      });
+    });
+
+    container.querySelectorAll('.nc-read-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.id, 10);
+        markNotificationRead(id);
+        loadNotificationCenterList();
+      });
+    });
+
+    container.querySelectorAll('.nc-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.id, 10);
+        try {
+          await api('/api/notifications/' + id, { method: 'DELETE' });
+          loadNotificationCenterList();
+        } catch (e) {}
+      });
+    });
+
+    renderNCPagination(total, totalPages);
+  }
+
+  function renderNCPagination(total, totalPages) {
+    const container = document.getElementById('notificationCenterPagination');
+    if (!container || totalPages <= 1) {
+      if (container) container.innerHTML = '';
+      return;
+    }
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${ncCurrentPage === 1 ? 'disabled' : ''} data-page="prev">上一页</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      html += `<button class="page-btn ${i === ncCurrentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="page-btn" ${ncCurrentPage === totalPages ? 'disabled' : ''} data-page="next">下一页</button>`;
+    html += '</div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (page === 'prev' && ncCurrentPage > 1) ncCurrentPage--;
+        else if (page === 'next' && ncCurrentPage < totalPages) ncCurrentPage++;
+        else if (page !== 'prev' && page !== 'next') ncCurrentPage = parseInt(page, 10);
+        loadNotificationCenterList();
+      });
+    });
+  }
 
   function showTicketPage() {
     document.querySelector('main.student-main').style.display = 'none';
@@ -626,38 +980,18 @@
 
   async function checkNotifications() {
     if (!user) return;
-    const params = new URLSearchParams({
-      userId: user.id,
-      userRole: 'student',
-    });
-    const { data } = await api('/api/notifications/unread-count?' + params.toString());
-    if (data && data.ok && data.data) {
-      const { unreadCount, latest } = data.data;
-      const badge = document.getElementById('ticketBadge');
-      if (badge) {
-        badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
-      }
-
-      if (latest && latest.length) {
-        latest.forEach((n) => {
-          if (n.id > lastNotificationId) {
-            showFloatingNotification(n);
-          }
-        });
-        const maxId = Math.max(...latest.map((n) => n.id));
-        if (maxId > lastNotificationId) {
-          lastNotificationId = maxId;
-        }
-      }
-    }
+    await fetchUnreadCount();
   }
 
   function showFloatingNotification(notification) {
     const el = document.createElement('div');
     el.className = 'floating-notification';
     el.innerHTML = `
-      <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
-      <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+      <div class="floating-notification-icon">${getTypeIcon(notification.type)}</div>
+      <div class="floating-notification-body">
+        <div class="floating-notification-title">${escapeHtml(notification.title)}</div>
+        <div class="floating-notification-content">${escapeHtml(notification.content || '')}</div>
+      </div>
     `;
     document.body.appendChild(el);
 
@@ -670,18 +1004,20 @@
     el.addEventListener('click', () => {
       el.classList.remove('show');
       setTimeout(() => el.remove(), 300);
-      if (notification.ticketId) {
-        showTicketPage();
-        showTicketDetailPage(notification.ticketId);
-      }
+      const relatedType = notification.relatedObjectType;
+      const relatedId = notification.relatedObjectId;
+      handleNotificationClick(relatedType, relatedId);
     });
 
-    markNotificationRead(notification.id);
+    if (!notification.isRead) {
+      markNotificationRead(notification.id);
+    }
   }
 
   async function markNotificationRead(id) {
     try {
       await api('/api/notifications/' + id + '/read', { method: 'PUT' });
+      fetchUnreadCount();
     } catch (e) {}
   }
 
@@ -696,6 +1032,7 @@
     document.getElementById('logoutBtn').addEventListener('click', (e) => {
       sessionStorage.removeItem('user');
       if (notificationTimer) clearInterval(notificationTimer);
+      if (notificationSSE) notificationSSE.close();
       if (navigator.sendBeacon) {
         navigator.sendBeacon(API_BASE + '/api/auth/logout', '');
       } else {
@@ -739,8 +1076,95 @@
 
     Promise.all([loadCourses(), loadMyCourses(), loadMyLottery(), loadAttendanceRecords()]);
 
-    checkNotifications();
-    notificationTimer = setInterval(checkNotifications, 30000);
+    fetchUnreadCount();
+    connectSSE();
+
+    document.getElementById('notificationBellBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleNotificationDropdown();
+    });
+
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('notificationDropdown');
+      const bellBtn = document.getElementById('notificationBellBtn');
+      if (notificationDropdownOpen && dropdown && !dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
+        toggleNotificationDropdown(false);
+      }
+    });
+
+    document.getElementById('markAllReadBtn').addEventListener('click', async () => {
+      try {
+        const params = new URLSearchParams({ userId: user.id, userRole: 'student' });
+        await api('/api/notifications/read-all?' + params.toString(), { method: 'POST' });
+        updateNotificationBadge(0);
+        loadNotificationDropdown();
+        showToast('已全部标为已读', 'success');
+      } catch (e) {}
+    });
+
+    const viewAllBtn = document.getElementById('viewAllNotificationsBtn');
+    if (viewAllBtn) {
+      viewAllBtn.addEventListener('click', () => {
+        toggleNotificationDropdown(false);
+        showNotificationCenterPage();
+      });
+    }
+
+    document.getElementById('soundToggleBtn').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      document.getElementById('soundToggleBtn').textContent = soundEnabled ? '🔊' : '🔇';
+    });
+
+    document.getElementById('notificationCenterBackBtn').addEventListener('click', hideNotificationCenterPage);
+
+    document.querySelectorAll('.notification-center-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.notification-center-tabs .tab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        ncCurrentType = btn.dataset.ntype || '';
+        ncCurrentPage = 1;
+        ncSelectedIds = new Set();
+        loadNotificationCenterList();
+      });
+    });
+
+    document.getElementById('ncBatchReadBtn').addEventListener('click', async () => {
+      if (ncSelectedIds.size === 0) {
+        showToast('请先选择通知', 'error');
+        return;
+      }
+      try {
+        await api('/api/notifications/batch-read', {
+          method: 'POST',
+          body: JSON.stringify({ ids: Array.from(ncSelectedIds) }),
+        });
+        ncSelectedIds = new Set();
+        loadNotificationCenterList();
+        showToast('已批量标为已读', 'success');
+      } catch (e) {
+        showToast('操作失败', 'error');
+      }
+    });
+
+    document.getElementById('ncBatchDeleteBtn').addEventListener('click', async () => {
+      if (ncSelectedIds.size === 0) {
+        showToast('请先选择通知', 'error');
+        return;
+      }
+      const ok = await showConfirm('确定删除选中的通知？');
+      if (!ok) return;
+      try {
+        await api('/api/notifications/batch-delete', {
+          method: 'POST',
+          body: JSON.stringify({ ids: Array.from(ncSelectedIds) }),
+        });
+        ncSelectedIds = new Set();
+        loadNotificationCenterList();
+        showToast('已批量删除', 'success');
+      } catch (e) {
+        showToast('删除失败', 'error');
+      }
+    });
   }
 
   const style = document.createElement('style');
@@ -1455,6 +1879,7 @@
     document.getElementById('forumListPage').style.display = 'none';
     document.getElementById('forumDetailPage').style.display = 'none';
     document.getElementById('trainingProgramPage').style.display = 'none';
+    document.getElementById('notificationCenterPage').style.display = 'none';
     if (examCountdownTimer) {
       clearInterval(examCountdownTimer);
       examCountdownTimer = null;

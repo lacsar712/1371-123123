@@ -10,7 +10,7 @@
   <div class="bg-mesh"></div>
   <header class="student-header page-enter">
     <h1>课程中心</h1>
-    <div>
+    <div style="display:flex;align-items:center;gap:0;">
       <button type="button" class="btn btn-ghost" id="examBtn" style="margin-right:12px;">
         📝 考试安排
       </button>
@@ -33,7 +33,11 @@
         📩 我的工单
         <span id="ticketBadge" class="badge-dot" style="display:none;"></span>
       </button>
-      <span id="userName" style="margin-right:12px;color:var(--text-secondary);"></span>
+      <button type="button" class="notification-bell-btn" id="notificationBellBtn" aria-label="通知">
+        <span class="notification-bell-icon" id="bellIcon">🔔</span>
+        <span class="notification-badge" id="notificationBadge" style="display:none;">0</span>
+      </button>
+      <span id="userName" style="margin-left:12px;color:var(--text-secondary);"></span>
       <a href="index.html" class="btn btn-ghost" id="logoutBtn" role="button">退出</a>
     </div>
   </header>
@@ -410,12 +414,42 @@
     </div>
   </div>
 
-  <div id="notificationPanel" class="notification-panel" style="display:none;">
-    <div class="notification-header">
-      <span>系统通知</span>
-      <button type="button" class="btn btn-ghost btn-sm" id="markAllReadBtn">全部已读</button>
+  <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+    <div class="notification-dropdown-header">
+      <span style="font-weight:600;">通知</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="notification-dropdown-action" id="markAllReadBtn">全部已读</button>
+        <button type="button" class="notification-dropdown-action" id="viewAllNotificationsBtn">查看全部</button>
+        <button type="button" class="notification-sound-toggle" id="soundToggleBtn" title="通知音效开关">🔊</button>
+      </div>
     </div>
-    <div id="notificationList" class="notification-list"></div>
+    <div id="notificationDropdownList" class="notification-dropdown-list"></div>
+  </div>
+
+  <div id="notificationCenterPage" class="ticket-page" style="display:none;">
+    <div class="ticket-header" style="max-width:900px;margin:0 auto 24px;">
+      <button type="button" class="btn btn-ghost" id="notificationCenterBackBtn">← 返回</button>
+      <h2 style="margin:0;">通知中心</h2>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="ncBatchReadBtn" style="height:36px;padding:0 14px;font-size:0.8125rem;">批量标已读</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="ncBatchDeleteBtn" style="height:36px;padding:0 14px;font-size:0.8125rem;color:#ef4444;">批量删除</button>
+      </div>
+    </div>
+    <div style="max-width:900px;margin:0 auto;">
+      <div class="notification-center-tabs" style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">
+        <button type="button" class="tab-btn active" data-ntype="">全部</button>
+        <button type="button" class="tab-btn" data-ntype="lottery">🎰 候补转正</button>
+        <button type="button" class="tab-btn" data-ntype="ticket">📩 工单回复</button>
+        <button type="button" class="tab-btn" data-ntype="badge">🏅 新勋章</button>
+        <button type="button" class="tab-btn" data-ntype="exam">📝 考试提醒</button>
+        <button type="button" class="tab-btn" data-ntype="announcement">📢 公告</button>
+        <button type="button" class="tab-btn" data-ntype="system">⚙️ 系统</button>
+      </div>
+      <div id="notificationCenterList" class="notification-center-list">
+        <div style="text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+      </div>
+      <div id="notificationCenterPagination" style="margin-top:24px;text-align:center;"></div>
+    </div>
   </div>
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
