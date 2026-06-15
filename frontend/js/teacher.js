@@ -711,7 +711,7 @@
       return;
     }
     container.innerHTML = notifications.map((n) => `
-      <div class="notification-dropdown-item ${n.isRead ? '' : 'unread'}" data-id="${n.id}" data-type="${n.type || 'system'}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}">
+      <div class="notification-dropdown-item ${n.isRead ? '' : 'unread'}" data-id="${n.id}" data-type="${n.type || 'system'}" data-related-type="${n.relatedObjectType || ''}" data-related-id="${n.relatedObjectId || ''}" data-is-read="${n.isRead ? '1' : '0'}">
         <div class="notification-dropdown-item-icon">${getTypeIcon(n.type)}</div>
         <div class="notification-dropdown-item-content">
           <div class="notification-dropdown-item-title">${escapeHtml(n.title)}</div>
@@ -727,8 +727,10 @@
         const id = parseInt(el.dataset.id, 10);
         const relatedType = el.dataset.relatedType;
         const relatedId = parseInt(el.dataset.relatedId, 10);
-        if (!el.classList.contains('isRead')) {
+        const isRead = el.dataset.isRead === '1';
+        if (!isRead) {
           markNotificationRead(id);
+          el.dataset.isRead = '1';
           el.classList.remove('unread');
           const dot = el.querySelector('.notification-unread-dot');
           if (dot) dot.remove();
@@ -781,15 +783,14 @@
       setTimeout(() => el.remove(), 300);
       const relatedType = notification.relatedObjectType;
       const relatedId = notification.relatedObjectId;
+      if (!notification.isRead) {
+        markNotificationRead(notification.id);
+      }
       if (relatedType === 'ticket' && relatedId) {
         showTicketPage();
         showTicketDetailPage(relatedId);
       }
     });
-
-    if (!notification.isRead) {
-      markNotificationRead(notification.id);
-    }
   }
 
   async function markNotificationRead(id) {
