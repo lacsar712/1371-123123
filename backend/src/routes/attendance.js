@@ -214,7 +214,7 @@ router.get(
 
 router.post(
   '/signin',
-  body('code').isLength({ min: 6, max: 6 }).withMessage('请输入 6 位签到码'),
+  body('code').matches(/^\d{6}$/).withMessage('请输入 6 位数字签到码'),
   body('studentId').isInt({ min: 1 }).withMessage('无效的学生 ID'),
   async (req, res) => {
     const errors = validationResult(req);

@@ -221,6 +221,10 @@
       showToast('请输入 6 位签到码', 'error');
       return;
     }
+    if (!/^\d{6}$/.test(code)) {
+      showToast('请输入 6 位数字签到码', 'error');
+      return;
+    }
 
     const btn = document.getElementById('signInBtn');
     btn.disabled = true;
@@ -1050,6 +1054,9 @@
     document.getElementById('signInBtn').addEventListener('click', signIn);
     document.getElementById('attendanceCode').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') signIn();
+    });
+    document.getElementById('attendanceCode').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
     });
 
     document.getElementById('ticketBtn').addEventListener('click', showTicketPage);
